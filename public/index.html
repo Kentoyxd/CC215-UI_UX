@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Pulsegrid — live IT operations dashboard: uptime, incidents, tickets and infrastructure health."
+    />
+    <meta name="theme-color" content="#080b10" />
+    <title>Pulsegrid — IT Operations Command Center</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 29,9 29,23 16,30 3,23 3,9' fill='none' stroke='%2345d8cb' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%2345d8cb'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/auth.css" />
+  </head>
+  <body class="locked">
+    <div class="shell">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
+            <polygon
+              points="16,2 29,9 29,23 16,30 3,23 3,9"
+              stroke="#45d8cb"
+              stroke-width="1.4"
+            />
+            <circle cx="16" cy="16" r="4.2" fill="#45d8cb" />
+            <line
+              x1="16"
+              y1="2"
+              x2="16"
+              y2="11.5"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+            <line
+              x1="29"
+              y1="9"
+              x2="19.5"
+              y2="14"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+            <line
+              x1="29"
+              y1="23"
+              x2="19.5"
+              y2="18"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+            <line
+              x1="16"
+              y1="30"
+              x2="16"
+              y2="20.5"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+            <line
+              x1="3"
+              y1="23"
+              x2="12.5"
+              y2="18"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+            <line
+              x1="3"
+              y1="9"
+              x2="12.5"
+              y2="14"
+              stroke="#2c3644"
+              stroke-width="1.2"
+            />
+          </svg>
+          <div>
+            <div class="brand-name">Pulsegrid</div>
+            <div class="brand-sub">Sir Anto Best Professor</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="nav-label">MONITOR</div>
+          <nav class="nav">
+            <div class="nav-item active">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                <rect x="3" y="16" width="7" height="5" rx="1.5" />
+              </svg>
+              Overview
+            </div>
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <rect x="2" y="4" width="20" height="12" rx="2" />
+                <line x1="8" y1="20" x2="16" y2="20" />
+                <line x1="12" y1="16" x2="12" y2="20" />
+              </svg>
+              Infrastructure
+            </div>
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M12 2 3 7v6c0 5 4 8.5 9 9 5-.5 9-4 9-9V7z" />
+              </svg>
+              Incidents
+            </div>
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M4 4h16v16H4z" />
+                <path d="M4 9h16" />
+                <path d="M9 9v11" />
+              </svg>
+              Tickets
+            </div>
+          </nav>
+        </div>
+
+        <div>
+          <div class="nav-label">ANALYZE</div>
+          <nav class="nav">
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M3 3v18h18" />
+                <path d="m7 15 4-6 4 3 5-8" />
+              </svg>
+              Reports
+            </div>
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <circle cx="12" cy="8" r="3.2" />
+                <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
+              </svg>
+              Team
+            </div>
+            <div class="nav-item">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64c.6-.26 1-.85 1-1.55V3a2 2 0 1 1 4 0v.09c0 .7.4 1.29 1 1.55.66.28 1.4.14 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.48.47-.62 1.21-.34 1.87.26.6.85 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.29.4-1.55 1z"
+                />
+              </svg>
+              Settings
+            </div>
+          </nav>
+        </div>
+
+        <div class="sidebar-foot">
+          <div class="env-pill">
+            <span class="dot pulse"></span> Production · us-east-1
+          </div>
+          <div class="env-pill" style="color: #4c5666">v2.4.1 · build 8841</div>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main>
+        <div class="topbar">
+          <div class="search-wrap">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              id="searchInput"
+              type="text"
+              placeholder="Search hosts, incidents, tickets…"
+              aria-label="Search"
+              autocomplete="off"
+            />
+            <kbd id="kbdHint">⌘K</kbd>
+          </div>
+          <div class="topbar-right">
+            <div
+              class="select-chip has-menu"
+              id="envChip"
+              role="button"
+              tabindex="0"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-label="Environment"
+            >
+              <span id="envLabel">All environments</span>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
+            <div
+              class="select-chip has-menu"
+              id="rangeChip"
+              role="button"
+              tabindex="0"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-label="Time range"
+            >
+              Last <strong id="rangeLabel">30 days</strong>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
+            <div
+              class="icon-btn has-menu"
+              id="notifBtn"
+              role="button"
+              tabindex="0"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-label="Notifications"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+              </svg>
+              <span class="badge" id="notifBadge">3</span>
+            </div>
+            <div class="avatar" id="avatar" title="Profile">RJ</div>
+          </div>
+        </div>
+
+        <div class="view" id="view-overview">
+          <div class="hero">
+            <div class="hero-left">
+              <span class="hero-status-dot" id="heroDot"></span>
+              <div>
+                <div class="hero-title" id="heroTitle">
+                  All systems operational
+                </div>
+                <div class="hero-sub" id="heroSub">
+                  1,284 hosts checked in across 6 regions
+                </div>
+              </div>
+            </div>
+            <div class="hero-right">
+              <div class="hero-mini">
+                <div class="n" id="clock">--:--:--</div>
+                <div class="l">Local time</div>
+              </div>
+              <div class="hero-mini">
+                <div class="n" id="lastSync">just now</div>
+                <div class="l">Last synced</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPI GRID -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon green">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <div class="kpi-delta up">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="18 15 12 9 6 15" /></svg
+                  >0.04%
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="uptime"
+                data-count="99.982"
+                data-suffix="%"
+                data-decimals="3"
+              >
+                0%
+              </div>
+              <div class="kpi-label">System uptime</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon red">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                    <path
+                      d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
+                    />
+                  </svg>
+                </div>
+                <div class="kpi-delta down">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="6 9 12 15 18 9" /></svg
+                  >2
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="incidents"
+                data-count="3"
+                data-decimals="0"
+              >
+                0
+              </div>
+              <div class="kpi-label">Active incidents</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon blue">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="2" y="3" width="20" height="7" rx="1.5" />
+                    <rect x="2" y="14" width="20" height="7" rx="1.5" />
+                    <line x1="6" y1="6.5" x2="6" y2="6.5" />
+                    <line x1="6" y1="17.5" x2="6" y2="17.5" />
+                  </svg>
+                </div>
+                <div class="kpi-delta up">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="18 15 12 9 6 15" /></svg
+                  >4.2%
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="servers"
+                data-count="1284"
+                data-decimals="0"
+              >
+                0
+              </div>
+              <div class="kpi-label">Servers monitored</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon amber">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <div class="kpi-delta up">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="6 9 12 15 18 9" /></svg
+                  >8ms
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="response"
+                data-count="142"
+                data-suffix="ms"
+                data-decimals="0"
+              >
+                0
+              </div>
+              <div class="kpi-label">Avg response time</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M4 4h16v16H4z" />
+                    <path d="M4 9h16" />
+                    <path d="M9 9v11" />
+                  </svg>
+                </div>
+                <div class="kpi-delta up">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="18 15 12 9 6 15" /></svg
+                  >12%
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="resolved"
+                data-count="892"
+                data-decimals="0"
+              >
+                0
+              </div>
+              <div class="kpi-label">Tickets resolved (30d)</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon blue">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M4 20V10" />
+                    <path d="M12 20V4" />
+                    <path d="M20 20v-7" />
+                  </svg>
+                </div>
+                <div class="kpi-delta down">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="18 15 12 9 6 15" /></svg
+                  >3.1%
+                </div>
+              </div>
+              <div
+                class="kpi-value"
+                data-kpi="bandwidth"
+                data-count="68.4"
+                data-suffix="%"
+                data-decimals="1"
+              >
+                0%
+              </div>
+              <div class="kpi-label">Bandwidth utilization</div>
+            </div>
+          </div>
+
+          <!-- CHARTS ROW 1 -->
+          <div class="grid-2">
+            <div class="panel" id="panel-uptime">
+              <div class="section-head">
+                <h2 id="uptimeTitle">Uptime — last 30 days</h2>
+                <span class="hint" id="uptimeHint">avg 99.94%</span>
+              </div>
+              <div class="chart-wrap">
+                <svg
+                  id="lineChart"
+                  viewBox="0 0 640 200"
+                  width="100%"
+                  height="200"
+                  preserveAspectRatio="none"
+                  role="img"
+                  aria-label="Uptime trend"
+                ></svg>
+                <div class="tooltip" id="lineTip" hidden></div>
+              </div>
+            </div>
+
+            <div class="panel" id="panel-incidents">
+              <div class="section-head">
+                <h2>Incidents by severity</h2>
+                <span class="hint" id="incidentsHint">this month</span>
+              </div>
+              <div class="donut-wrap">
+                <svg
+                  id="donutChart"
+                  viewBox="0 0 140 140"
+                  width="140"
+                  height="140"
+                ></svg>
+                <div class="legend" id="donutLegend"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CHARTS ROW 2 -->
+          <div class="grid-2">
+            <div class="panel" id="panel-tickets">
+              <div class="section-head">
+                <h2>Tickets by category</h2>
+                <span class="hint" id="ticketsHint">892 total</span>
+              </div>
+              <div id="barChart"></div>
+            </div>
+
+            <div class="panel" id="panel-infra">
+              <div class="section-head">
+                <h2>Infrastructure by region</h2>
+                <div class="head-actions">
+                  <button
+                    class="btn"
+                    id="exportBtn"
+                    type="button"
+                    title="Download the regions shown as a CSV file"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M12 3v12" />
+                      <path d="m7 11 5 5 5-5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                    Export CSV
+                  </button>
+                  <span class="hint" id="regionsHint">6 regions</span>
+                </div>
+              </div>
+              <div class="server-row head">
+                <div>REGION</div>
+                <div>LOAD</div>
+                <div>LATENCY</div>
+                <div>STATUS</div>
+              </div>
+              <div id="serverList"></div>
+            </div>
+          </div>
+
+          <!-- ACTIVITY FEED -->
+          <div class="panel feed-panel" id="panel-feed">
+            <div class="section-head">
+              <h2>Live activity feed</h2>
+              <span
+                class="hint btn"
+                id="feedHint"
+                role="button"
+                tabindex="0"
+                aria-pressed="false"
+                title="Pause feed"
+                >streaming</span
+              >
+            </div>
+            <div class="feed" id="feed"></div>
+          </div>
+        </div>
+        <div class="view" id="view-reports" hidden></div>
+        <div class="view" id="view-team" hidden></div>
+        <div class="view" id="view-settings" hidden></div>
+      </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <!-- auth.js signs the user in, then loads data.js … app.js in order -->
+    <script src="js/auth.js"></script>
+  </body>
+</html>
