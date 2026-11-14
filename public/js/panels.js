@@ -1,8 +1,8 @@
-/* Pulsegrid — KPI cards, region list, hero status, live feed. */
+/* Pulsegrid — KPI cards, region list, hero status, activity feed (all driven by Firestore data). */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
-  const { pad, plural } = PG.util;
+  const { pad, plural, esc } = PG.util;
   const $ = (s) => document.querySelector(s);
 
   /* ---------- KPIs ---------- */
@@ -12,10 +12,7 @@
     const from = el._cur || 0;
     const t0 = performance.now();
     const fmt = (v) =>
-      v.toLocaleString("en-US", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      }) + suffix;
+      v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
 
     cancelAnimationFrame(el._raf);
     if (PG.reduceMotion || !duration) {
@@ -36,6 +33,7 @@
     get: (name) => parseFloat(kpi.el(name).dataset.count),
     set(name, value, ms = 700) {
       const el = kpi.el(name);
+      if (!el) return;
       el.dataset.count = value;
       animateTo(el, value, ms);
     },
@@ -46,29 +44,52 @@
     },
   };
 
+  function updateKpis(days) {
+    const D = PG.derive;
+    const rs = regions();
+    const up = D.uptimeSeries(days);
+    kpi.set("uptime", +(up.reduce((a, b) => a + b, 0) / up.length).toFixed(3));
+    kpi.set("incidents", D.openIncidents());
+    kpi.set("servers", rs.reduce((a, r) => a + (+r.servers || 0), 0));
+    kpi.set("response", rs.length ? Math.round(rs.reduce((a, r) => a + (+r.latency || 0), 0) / rs.length) : 0);
+    kpi.set("resolved", D.resolved(days));
+    kpi.set("open", D.openTickets());
+    const label = kpi.el("resolved") && kpi.el("resolved").nextElementSibling;
+    if (label) label.textContent = `Tickets resolved (${days}d)`;
+  }
+
   /* ---------- regions ---------- */
   const STATUS = {
     ok: { color: "#3ed486", label: "Healthy" },
     warn: { color: "#eeab3f", label: "Degraded" },
     crit: { color: "#f2565f", label: "Critical" },
   };
-  const statusOf = (load) => {
+  const RANK = { ok: 1, warn: 2, crit: 3 };
+  const regions = () => PG.store.data.regions;
+  const autoStatus = (load) => {
     const s = PG.settings.get();
     return load >= s.critical ? "crit" : load >= s.warn ? "warn" : "ok";
   };
-  const regions = PG.regions.map((r) => ({ ...r }));
+  const statusOf = (r) => (STATUS[r.status] ? r.status : autoStatus(+r.load || 0));
 
   const sort = { key: null, dir: "desc" };
   const view = { env: "all", query: "" };
-  const sortVal = { name: (r) => r.name, load: (r) => r.load, latency: (r) => r.latency, status: (r) => r.load };
+  const sortVal = {
+    name: (r) => r.name.toLowerCase(),
+    load: (r) => r.load,
+    latency: (r) => r.latency,
+    status: (r) => RANK[statusOf(r)],
+  };
 
   function visible() {
     const q = view.query.trim().toLowerCase();
-    const list = regions.filter(
-      (r) =>
-        (view.env === "all" || r.env === view.env) &&
-        (!q || `${r.name} ${r.region}`.toLowerCase().includes(q)),
-    );
+    const list = regions()
+      .filter(
+        (r) =>
+          (view.env === "all" || r.env === view.env) &&
+          (!q || `${r.name} ${r.region || ""}`.toLowerCase().includes(q)),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
     if (sort.key) {
       const f = sortVal[sort.key];
       const s = sort.dir === "asc" ? 1 : -1;
@@ -78,12 +99,12 @@
   }
 
   function paintRow(r) {
-    const row = document.querySelector(`.server-row[data-name="${r.name}"]`);
+    const row = document.querySelector(`.server-row[data-id="${r.id}"]`);
     if (!row) return;
-    const k = statusOf(r.load);
+    const k = statusOf(r);
     const s = STATUS[k];
     const fill = row.querySelector(".load-fill");
-    fill.style.width = r.load + "%";
+    fill.style.width = (+r.load || 0) + "%";
     fill.style.background = s.color;
     row.querySelector(".load-track").title = `${r.load}% load`;
     const dot = row.querySelector(".dot");
@@ -103,49 +124,42 @@
       ? list
           .map(
             (r) => `
-          <div class="server-row" data-name="${r.name}">
-            <div class="server-name"><span class="dot"></span>${r.name}</div>
+          <div class="server-row" data-id="${esc(r.id)}">
+            <div class="server-name"><span class="dot"></span>${esc(r.name)}</div>
             <div class="load-track"><div class="load-fill"></div></div>
             <div class="server-region"></div>
             <div><span class="status-chip"></span></div>
           </div>`,
           )
           .join("")
-      : `<div class="empty">No regions match your filters</div>`;
+      : `<div class="empty">${regions().length ? "No regions match your filters" : 'No regions yet. <button class="link-btn" type="button" data-go="Infrastructure">Add your first region</button>'}</div>`;
     $("#regionsHint").textContent = plural(list.length, "region");
     if (animate) setTimeout(() => list.forEach(paintRow), 80);
     else list.forEach(paintRow);
   }
 
-  function driftRegions() {
-    const { clamp, jitter } = PG.util;
-    const changes = [];
-    regions.forEach((r) => {
-      const from = statusOf(r.load);
-      r.load = Math.round(clamp(r.load + jitter(4), 8, 99));
-      r.latency = Math.round(clamp(r.latency + jitter(3), 15, 220));
-      const to = statusOf(r.load);
-      if (from !== to) changes.push({ name: r.name, from, to });
-      paintRow(r);
-    });
-    updateHero();
-    return changes; // status transitions, used to raise alerts
-  }
-
-  /* ---------- hero status (derived from production regions) ---------- */
+  /* ---------- hero status (production regions, or all if there are none) ---------- */
   function updateHero() {
-    const prod = regions.filter((r) => r.env === "prod");
-    const crit = prod.filter((r) => statusOf(r.load) === "crit").length;
-    const warn = prod.filter((r) => statusOf(r.load) === "warn").length;
+    const rs = regions();
+    const prod = rs.filter((r) => r.env === "prod");
+    const basis = prod.length ? prod : rs;
+    const crit = basis.filter((r) => statusOf(r) === "crit").length;
+    const warn = basis.filter((r) => statusOf(r) === "warn").length;
+    const title = !rs.length
+      ? "No regions added yet"
+      : crit
+        ? `Critical load in ${plural(crit, "region")}`
+        : warn
+          ? `Degraded performance in ${plural(warn, "region")}`
+          : "All systems operational";
     $("#heroDot").className = "hero-status-dot" + (crit ? " crit" : warn ? " warn" : "");
-    $("#heroTitle").textContent = crit
-      ? `Critical load in ${plural(crit, "region")}`
-      : warn
-        ? `Degraded performance in ${plural(warn, "region")}`
-        : "All systems operational";
-    $("#heroSub").textContent =
-      `${kpi.get("servers").toLocaleString("en-US")} hosts checked in across ${prod.length} regions`;
-    document.title = `${crit ? "🔴" : warn ? "🟠" : "🟢"} ${$("#heroTitle").textContent} · Pulsegrid`;
+    $("#heroTitle").textContent = title;
+    $("#heroSub").textContent = rs.length
+      ? `${basis.reduce((a, r) => a + (+r.servers || 0), 0).toLocaleString("en-US")} servers across ${plural(basis.length, "region")}`
+      : "Add your first region under Infrastructure.";
+    const side = $("#sideEnv");
+    if (side) side.textContent = rs.length ? `${plural(rs.length, "region")} · ${plural(rs.reduce((a, r) => a + (+r.servers || 0), 0), "server")}` : "No regions yet";
+    document.title = `${rs.length ? (crit ? "🔴" : warn ? "🟠" : "🟢") : "⚪"} ${title} · Pulsegrid`;
   }
 
   /* ---------- sortable columns ---------- */
@@ -175,8 +189,8 @@
   function exportCsv() {
     const list = visible();
     const rows = [
-      ["region_id", "location", "environment", "load_pct", "latency_ms", "status"],
-      ...list.map((r) => [r.name, r.region, r.env, r.load, r.latency, STATUS[statusOf(r.load)].label]),
+      ["region_id", "location", "environment", "servers", "load_pct", "latency_ms", "status"],
+      ...list.map((r) => [r.name, r.region || "", r.env, r.servers || 0, r.load, r.latency, STATUS[statusOf(r)].label]),
     ];
     const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -190,53 +204,66 @@
     return list.length;
   }
 
-  /* ---------- live activity feed ---------- */
-  const feedState = { items: [], paused: false, query: "", max: 6 };
+  /* ---------- activity feed: built from incidents + tickets (plus local alerts) ---------- */
+  const feedState = { paused: false, query: "", max: 6, local: [] };
   const plain = (html) => html.replace(/<[^>]+>/g, "");
+  const sevColor = (k) => (PG.severityMeta.find((m) => m.key === k) || {}).color || "#5b8fef";
+  const sevLabel = (k) => (PG.severityMeta.find((m) => m.key === k) || {}).label || k;
+
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return d.toDateString() === new Date().toDateString()
+      ? `${hm}:${pad(d.getSeconds())}`
+      : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${hm}`;
+  }
+
+  function events() {
+    const { incidents, tickets } = PG.store.data;
+    const out = feedState.local.slice();
+    incidents.forEach((i) => {
+      out.push({ ts: i.startedAt, dot: sevColor(i.severity), text: `Incident <b>${esc(i.title)}</b> opened · ${esc(sevLabel(i.severity))}` });
+      if (i.resolvedAt) out.push({ ts: i.resolvedAt, dot: "#3ed486", text: `Incident <b>${esc(i.title)}</b> resolved` });
+    });
+    tickets.forEach((t) => {
+      out.push({ ts: t.openedAt, dot: "#5b8fef", text: `Ticket <b>${esc(t.title)}</b> opened` });
+      if (t.resolvedAt) out.push({ ts: t.resolvedAt, dot: "#3ed486", text: `Ticket <b>${esc(t.title)}</b> resolved` });
+    });
+    return out.filter((e) => e.ts).sort((a, b) => b.ts - a.ts).slice(0, 60);
+  }
 
   function renderFeed(animateFirst) {
     const q = feedState.query.trim().toLowerCase();
-    const list = feedState.items
-      .filter((it) => !q || plain(it.text).toLowerCase().includes(q))
-      .slice(0, feedState.max);
+    const all = events();
+    const list = all.filter((e) => !q || plain(e.text).toLowerCase().includes(q)).slice(0, feedState.max);
     $("#feed").innerHTML = list.length
       ? list
           .map(
-            (it, i) => `
+            (e, i) => `
           <div class="feed-row"${animateFirst && i === 0 ? "" : ' style="animation:none"'}>
-            <div class="feed-time">${it.time}</div>
-            <span class="feed-dot" style="background:${it.dot}; box-shadow:0 0 6px ${it.dot}"></span>
-            <div class="feed-text">${it.text}</div>
+            <div class="feed-time">${fmtTime(e.ts)}</div>
+            <span class="feed-dot" style="background:${e.dot}; box-shadow:0 0 6px ${e.dot}"></span>
+            <div class="feed-text">${e.text}</div>
           </div>`,
           )
           .join("")
-      : `<div class="empty">No matching activity</div>`;
-  }
-
-  function pushFeed(offsetMs = 0, render = true, tpl) {
-    const t = tpl || PG.feedTemplates[Math.floor(Math.random() * PG.feedTemplates.length)];
-    const d = new Date(Date.now() - offsetMs);
-    feedState.items.unshift({
-      ...t,
-      time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
-    });
-    feedState.items.length = Math.min(feedState.items.length, 60);
-    if (render) renderFeed(true);
+      : `<div class="empty">${all.length ? "No matching activity" : "No activity yet. Incidents and tickets you add will appear here."}</div>`;
   }
 
   function setPaused(p) {
     feedState.paused = p;
     const h = $("#feedHint");
-    h.textContent = p ? "paused · click to resume" : "streaming";
+    h.textContent = p ? "paused · click to resume" : "live";
     h.title = p ? "Resume feed" : "Pause feed";
     h.setAttribute("aria-pressed", String(p));
+    if (!p) renderFeed(false);
   }
 
   const feed = {
     init() {
-      for (let i = 4; i >= 0; i--) pushFeed(i * 4200, false);
       renderFeed(false);
       const h = $("#feedHint");
+      h.textContent = "live";
       const toggle = () => setPaused(!feedState.paused);
       h.addEventListener("click", toggle);
       h.addEventListener("keydown", (e) => {
@@ -245,27 +272,34 @@
           toggle();
         }
       });
-      setInterval(() => {
-        if (!feedState.paused && !document.hidden) pushFeed();
-      }, 4200);
     },
     log(dot, text) {
-      pushFeed(0, true, { dot, text });
+      feedState.local.unshift({ ts: Date.now(), dot, text });
+      feedState.local.length = Math.min(feedState.local.length, 20);
+      if (!feedState.paused) renderFeed(true);
+    },
+    refresh() {
+      if (!feedState.paused) renderFeed(false);
     },
     setQuery(q) {
       feedState.query = q;
       renderFeed(false);
     },
-    recent: (n) => feedState.items.slice(0, n),
+    recent: (n) => events().slice(0, n).map((e) => ({ time: fmtTime(e.ts), text: e.text })),
     isPaused: () => feedState.paused,
     setPaused,
   };
 
   function repaint() {
-    regions.forEach(paintRow);
+    renderRegions(view.env, view.query, false);
     updateHero();
   }
-  const snapshot = () => regions.map((r) => ({ ...r, status: STATUS[statusOf(r.load)].label }));
+  const snapshot = () => regions().map((r) => ({ ...r, region: r.region || "", status: STATUS[statusOf(r)].label }));
 
-  PG.panels = { kpi, feed, renderRegions, driftRegions, updateHero, initSort, exportCsv, repaint, snapshot };
-})(); 
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-go]");
+    if (b) PG.ui.navTo(b.dataset.go);
+  });
+
+  PG.panels = { kpi, feed, STATUS, autoStatus, renderRegions, updateHero, updateKpis, initSort, exportCsv, repaint, snapshot };
+})();

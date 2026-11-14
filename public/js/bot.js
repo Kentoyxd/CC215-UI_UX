@@ -65,7 +65,6 @@
   /* ---------- live data helpers ---------- */
   const regions = () => PG.panels.snapshot();
   const range = () => PG.getState().range;
-  const factor = () => PG.ranges[range()].factor;
   const sum = (a) => a.reduce((x, y) => x + y, 0);
   const rowOf = (r) => `<b>${esc(r.name)}</b> · ${r.load}% load · ${r.latency}ms · ${r.status}`;
   const lines = (a) => a.join("<br>");
@@ -73,11 +72,11 @@
 
   function findRegion(t) {
     const stg = /\b(staging|stg)\b/.test(t);
-    const city = (r) => r.region.replace(/\(.*\)/, "").replace(/^n\.\s*/i, "").trim().toLowerCase();
+    const city = (r) => (r.region || "").replace(/\(.*\)/, "").replace(/^n\.\s*/i, "").trim().toLowerCase();
     return regions()
-      .filter((r) => stg === (r.env === "stg") || t.includes(r.name))
+      .filter((r) => stg === (r.env === "stg") || t.includes(r.name.toLowerCase()))
       .sort((a, b) => b.name.length - a.name.length)
-      .find((r) => t.includes(r.name) || t.includes(city(r)));
+      .find((r) => t.includes(r.name.toLowerCase()) || (city(r) && t.includes(city(r))));
   }
 
   /* ---------- answers (each returns { h, c? }) ---------- */
@@ -109,7 +108,7 @@
       : warn.length
         ? `No critical regions, but <b>${plural(warn.length, "region")} degraded</b>: ${names(warn)}.`
         : `All <b>${rs.length}</b> regions are healthy.`;
-    h += `<br>Uptime ${k.get("uptime")}% · response ${Math.round(k.get("response"))}ms · bandwidth ${k.get("bandwidth")}%.`;
+    h += `<br>Uptime ${k.get("uptime")}% · response ${Math.round(k.get("response"))}ms · ${plural(k.get("open"), "open ticket")}.`;
     return { h, c: suggestions("status") };
   }
 
@@ -143,7 +142,7 @@
 
   function uptime() {
     topic("uptime");
-    const s = PG.uptimeSeries(range());
+    const s = PG.derive.uptimeSeries(range());
     const avg = sum(s) / s.length;
     const below = s.filter((v) => v < 99.9).length;
     return {
@@ -154,7 +153,7 @@
 
   function incidents() {
     topic("incidents");
-    const d = PG.severity.map((x) => ({ l: x.label, v: Math.round(x.value * factor()) }));
+    const d = PG.derive.severity(range()).map((x) => ({ l: x.label, v: x.value }));
     return {
       h: `<b>${sum(d.map((x) => x.v))}</b> incidents in the last ${range()} days:<br>${lines(d.map((x) => `${x.l}: ${x.v}`))}<br>${PG.panels.kpi.get("incidents")} are active right now.`,
       c: suggestions("incidents"),
@@ -163,11 +162,11 @@
 
   function tickets() {
     topic("tickets");
-    const d = PG.tickets.map((x) => ({ l: x.label, v: Math.round(x.value * factor()) }));
+    const d = PG.derive.tickets(range()).map((x) => ({ l: x.label, v: x.value }));
     const total = sum(d.map((x) => x.v));
     const top = d.reduce((a, b) => (b.v > a.v ? b : a));
     return {
-      h: `<b>${total.toLocaleString("en-US")}</b> tickets in the last ${range()} days. ${top.l} leads with ${top.v} (${Math.round((top.v / total) * 100)}%).`,
+      h: `<b>${total.toLocaleString("en-US")}</b> tickets in the last ${range()} days. ${total ? `${top.l} leads with ${top.v} (${Math.round((top.v / total) * 100)}%).` : "None have been logged yet."}`,
       c: suggestions("tickets"),
     };
   }
@@ -242,9 +241,9 @@
       notes.push(`Thresholds are now degraded at <b>${s.warn}%</b> and critical at <b>${s.critical}%</b>.`);
       done = true;
     }
-    if ((m = t.match(/\b(?:turn|switch)\s+(on|off)\b.*?(feed alerts?|live|pop-?ups?|toasts?|alerts?)/))) {
+    if ((m = t.match(/\b(?:turn|switch)\s+(on|off)\b.*?(feed alerts?|pop-?ups?|toasts?|alerts?)/))) {
       const on = m[1] === "on";
-      const key = /feed/.test(m[2]) ? "feedAlerts" : /live/.test(m[2]) ? "live" : "toasts";
+      const key = /feed/.test(m[2]) ? "feedAlerts" : "toasts";
       S.set({ [key]: on });
       notes.push(`${{ feedAlerts: "Alerts in the activity feed", live: "Live updates", toasts: "Pop-up alerts" }[key]} turned <b>${on ? "on" : "off"}</b>.`);
     }
@@ -257,7 +256,7 @@
     }
     if (/\b(refresh|sync now|update now|reload data)\b/.test(t)) {
       A.refresh();
-      notes.push("Data refreshed.");
+      notes.push("Dashboard refreshed. Data updates live.");
     }
     if (/\bexport\b|\bdownload\b.*\bcsv\b/.test(t)) {
       notes.push(`Exported <b>${PG.panels.exportCsv()}</b> regions to CSV.`);
@@ -282,7 +281,7 @@
     if (/\b(incident\w*|severity)\b/.test(t)) return incidents();
     if (/\b(ticket\w*|helpdesk|backlog)\b/.test(t)) return tickets();
     if (/\b(on[- ]?call|team|colleague\w*|who's|who is|online)\b/.test(t)) return team();
-    if (/\bbandwidth\b/.test(t)) return { h: `Bandwidth utilisation is <b>${PG.panels.kpi.get("bandwidth")}%</b>.`, c: suggestions() };
+    if (/bandwidth/.test(t)) return { h: "I don't track bandwidth. Try regions, latency, uptime, incidents or tickets.", c: suggestions() };
     if (/\b(activity|feed|recent|latest|happened)\b/.test(t)) return activity();
     return null;
   }

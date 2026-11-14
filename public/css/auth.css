@@ -15,3 +15,6 @@ body.locked .shell { visibility: hidden; }
 .auth-row { display: flex; gap: 8px; }
 .auth button:focus-visible, .auth input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .auth button:disabled, .auth input:disabled { opacity: 0.6; cursor: default; }
+
+.auth-uid { display: block; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font: 11.5px var(--mono); overflow-wrap: anywhere; user-select: all; }
+.auth a.btn { text-decoration: none; display: inline-flex; align-items: center; }

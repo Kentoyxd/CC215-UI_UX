@@ -21,6 +21,7 @@
     />
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/auth.css" />
+    <link rel="stylesheet" href="css/admin.css" />
   </head>
   <body class="locked">
     <div class="shell">
@@ -192,9 +193,17 @@
 
         <div class="sidebar-foot">
           <div class="env-pill">
-            <span class="dot pulse"></span> Production · us-east-1
+            <span class="dot pulse"></span>
+            <span id="sideEnv">No regions yet</span>
           </div>
-          <div class="env-pill" style="color: #4c5666">v2.4.1 · build 8841</div>
+          <a
+            class="env-pill"
+            href="status"
+            target="_blank"
+            rel="noopener"
+            style="text-decoration: none"
+            >Public status page ↗</a
+          >
         </div>
       </aside>
 
@@ -279,7 +288,7 @@
               </svg>
               <span class="badge" id="notifBadge">3</span>
             </div>
-            <div class="avatar" id="avatar" title="Profile">RJ</div>
+            <div class="avatar" id="avatar" title="Profile">A</div>
           </div>
         </div>
 
@@ -288,12 +297,8 @@
             <div class="hero-left">
               <span class="hero-status-dot" id="heroDot"></span>
               <div>
-                <div class="hero-title" id="heroTitle">
-                  All systems operational
-                </div>
-                <div class="hero-sub" id="heroSub">
-                  1,284 hosts checked in across 6 regions
-                </div>
+                <div class="hero-title" id="heroTitle">Loading…</div>
+                <div class="hero-sub" id="heroSub">Loading…</div>
               </div>
             </div>
             <div class="hero-right">
@@ -303,7 +308,7 @@
               </div>
               <div class="hero-mini">
                 <div class="n" id="lastSync">just now</div>
-                <div class="l">Last synced</div>
+                <div class="l">Data</div>
               </div>
             </div>
           </div>
@@ -323,21 +328,11 @@
                     <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
                 </div>
-                <div class="kpi-delta up">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="18 15 12 9 6 15" /></svg
-                  >0.04%
-                </div>
               </div>
               <div
                 class="kpi-value"
                 data-kpi="uptime"
-                data-count="99.982"
+                data-count="100"
                 data-suffix="%"
                 data-decimals="3"
               >
@@ -362,21 +357,11 @@
                     />
                   </svg>
                 </div>
-                <div class="kpi-delta down">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="6 9 12 15 18 9" /></svg
-                  >2
-                </div>
               </div>
               <div
                 class="kpi-value"
                 data-kpi="incidents"
-                data-count="3"
+                data-count="0"
                 data-decimals="0"
               >
                 0
@@ -399,21 +384,11 @@
                     <line x1="6" y1="17.5" x2="6" y2="17.5" />
                   </svg>
                 </div>
-                <div class="kpi-delta up">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="18 15 12 9 6 15" /></svg
-                  >4.2%
-                </div>
               </div>
               <div
                 class="kpi-value"
                 data-kpi="servers"
-                data-count="1284"
+                data-count="0"
                 data-decimals="0"
               >
                 0
@@ -434,21 +409,11 @@
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
                 </div>
-                <div class="kpi-delta up">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="6 9 12 15 18 9" /></svg
-                  >8ms
-                </div>
               </div>
               <div
                 class="kpi-value"
                 data-kpi="response"
-                data-count="142"
+                data-count="0"
                 data-suffix="ms"
                 data-decimals="0"
               >
@@ -471,21 +436,11 @@
                     <path d="M9 9v11" />
                   </svg>
                 </div>
-                <div class="kpi-delta up">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="18 15 12 9 6 15" /></svg
-                  >12%
-                </div>
               </div>
               <div
                 class="kpi-value"
                 data-kpi="resolved"
-                data-count="892"
+                data-count="0"
                 data-decimals="0"
               >
                 0
@@ -507,27 +462,16 @@
                     <path d="M20 20v-7" />
                   </svg>
                 </div>
-                <div class="kpi-delta down">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                  >
-                    <polyline points="18 15 12 9 6 15" /></svg
-                  >3.1%
-                </div>
               </div>
               <div
                 class="kpi-value"
-                data-kpi="bandwidth"
-                data-count="68.4"
-                data-suffix="%"
-                data-decimals="1"
+                data-kpi="open"
+                data-count="0"
+                data-decimals="0"
               >
                 0%
               </div>
-              <div class="kpi-label">Bandwidth utilization</div>
+              <div class="kpi-label">Open tickets</div>
             </div>
           </div>
 
@@ -635,6 +579,9 @@
         </div>
         <div class="view" id="view-reports" hidden></div>
         <div class="view" id="view-team" hidden></div>
+        <div class="view" id="view-infra" hidden></div>
+        <div class="view" id="view-incidents" hidden></div>
+        <div class="view" id="view-tickets" hidden></div>
         <div class="view" id="view-settings" hidden></div>
       </main>
     </div>

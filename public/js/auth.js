@@ -8,7 +8,7 @@
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const PREFIX = "pulsegrid:";
-  const SCRIPTS = ["data", "settings", "charts", "panels", "ui", "views", "bot", "app"].map((n) => `js/${n}.js`);
+  const SCRIPTS = ["data", "store", "settings", "charts", "panels", "ui", "views", "admin", "bot", "app"].map((n) => `js/${n}.js`);
   const rawSet = Storage.prototype.setItem;
   const rawRemove = Storage.prototype.removeItem;
   const cfg = window.FIREBASE_CONFIG || {};
@@ -86,8 +86,11 @@
     const data = snap.exists ? snap.data().data || {} : {};
     Object.entries(data).forEach(([k, v]) => rawSet.call(localStorage, PREFIX + k, v));
     if (!snap.exists) {
-      const name = (user.displayName || (user.email || "").split("@")[0] || "").slice(0, 40);
       await ref.set({ email: user.email || "", createdAt: firebase.firestore.FieldValue.serverTimestamp(), data: {} });
+    }
+    // No saved name yet (new account, or an older one): start with the account's own name.
+    if (!data.settings) {
+      const name = (user.displayName || (user.email || "").split("@")[0] || "").slice(0, 40);
       if (name) localStorage.setItem(PREFIX + "settings", JSON.stringify({ name })); // patched → saved to cloud
     }
   }
@@ -170,6 +173,16 @@
     o.querySelector("#auOut").onclick = () => auth.signOut().then(() => location.reload());
   }
 
+  function showNoAccess(user) {
+    const o = card(`<h1>No admin access</h1>
+      <p class="auth-sub">This dashboard is for administrators. If you just want to check service status, use the public status page.</p>
+      <a class="btn auth-main" href="status">Open status page</a>
+      <p class="auth-sub">Are you the owner? Add a document to the <b>admins</b> collection in Firestore with this ID:</p>
+      <code class="auth-uid">${esc(user.uid)}</code>
+      <button class="btn ghost auth-main" id="auOut" type="button">Sign out</button>`);
+    o.querySelector("#auOut").onclick = () => auth.signOut().then(() => location.reload());
+  }
+
   const loadScripts = (i = 0) =>
     new Promise((res, rej) => {
       if (i >= SCRIPTS.length) return res();
@@ -184,6 +197,9 @@
     if (started) return;
     card(`<p class="auth-sub">Loading your workspace…</p>`);
     try {
+      // The dashboard is for admins only (a document in the "admins" collection with their user ID).
+      const adminDoc = await db.collection("admins").doc(user.uid).get();
+      if (!adminDoc.exists) return showNoAccess(user);
       await hydrate(user);
       patchStorage();
       started = true;

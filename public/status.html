@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pulsegrid status</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/status.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="top">
+        <div class="brand">
+          <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <polygon
+              points="16,2 29,9 29,23 16,30 3,23 3,9"
+              stroke="#45d8cb"
+              stroke-width="1.4"
+            />
+            <circle cx="16" cy="16" r="4.2" fill="#45d8cb" />
+          </svg>
+          <span>Pulsegrid status</span>
+        </div>
+        <a class="admin-link" href="/">Admin sign in</a>
+      </header>
+
+      <section class="banner" id="banner" aria-live="polite">
+        <span class="banner-dot"></span>
+        <div>
+          <h1 id="bannerTitle">Checking status…</h1>
+          <p id="bannerSub"></p>
+        </div>
+        <div class="uptime">
+          <b id="uptime">—</b><span>uptime, last 30 days</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Active incidents</h2>
+        <div id="active" class="list"></div>
+      </section>
+
+      <section>
+        <h2>Regions</h2>
+        <div id="regions" class="list"></div>
+      </section>
+
+      <section>
+        <h2>Past incidents <small>last 30 days</small></h2>
+        <div id="past" class="list"></div>
+      </section>
+
+      <footer>Updates live. <span id="updated"></span></footer>
+    </main>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="/js/firebase-config.js"></script>
+    <script src="/js/status.js"></script>
+  </body>
+</html>

@@ -4,7 +4,7 @@
   const PG = window.Pulsegrid;
   const KEY = "pulsegrid:settings";
   const defaults = {
-    name: "R. Jones",
+    name: "Admin",
     warn: 80, // region load % that counts as "Degraded"
     critical: 92, // region load % that counts as "Critical"
     live: true, // simulated live updates on/off

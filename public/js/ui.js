@@ -96,9 +96,9 @@
   /* ---------- sidebar navigation + pages ---------- */
   const NAV = {
     Overview: ["overview"],
-    Infrastructure: ["overview", "panel-infra"],
-    Incidents: ["overview", "panel-incidents"],
-    Tickets: ["overview", "panel-tickets"],
+    Infrastructure: ["infra"],
+    Incidents: ["incidents"],
+    Tickets: ["tickets"],
     Reports: ["reports"],
     Team: ["team"],
     Settings: ["settings"],
@@ -121,7 +121,7 @@
     navItems.forEach((item) => activate(item, () => navTo(item.textContent.trim())));
   }
   function openFromHash() {
-    const label = { reports: "Reports", team: "Team", settings: "Settings" }[location.hash.slice(1)];
+    const label = { infra: "Infrastructure", incidents: "Incidents", tickets: "Tickets", reports: "Reports", team: "Team", settings: "Settings" }[location.hash.slice(1)];
     if (label) navTo(label, false);
   }
 

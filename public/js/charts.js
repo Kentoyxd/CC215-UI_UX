@@ -5,11 +5,12 @@
   const $ = (s) => document.querySelector(s);
 
   /* ---------- uptime line chart with hover tooltip ---------- */
-  function line(days) {
+  function line(days, animate = true) {
     const svg = $("#lineChart");
     const tip = $("#lineTip");
-    const pts = PG.uptimeSeries(days);
-    const W = 640, H = 200, PAD = 10, MIN = 99.8, MAX = 100;
+    const pts = PG.derive.uptimeSeries(days);
+    const W = 640, H = 200, PAD = 10, MAX = 100;
+    const MIN = Math.min(99.9, Math.floor(Math.min(...pts) * 100) / 100 - 0.02);
     const step = (W - PAD * 2) / (pts.length - 1);
     const xy = pts.map((v, i) => [
       PAD + i * step,
@@ -39,7 +40,8 @@
 
     const path = svg.querySelector("#uptimeLine");
     const area = svg.querySelector("#uptimeArea");
-    if (PG.reduceMotion) {
+    if (PG.reduceMotion || !animate) {
+      area.style.opacity = 1;
       area.setAttribute("opacity", 1);
     } else {
       const len = path.getTotalLength();
@@ -81,9 +83,10 @@
   }
 
   /* ---------- incidents donut ---------- */
-  function donut(factor) {
-    const data = PG.severity.map((d) => ({ ...d, value: Math.round(d.value * factor) }));
-    const total = data.reduce((a, b) => a + b.value, 0) || 1;
+  function donut(days) {
+    const data = PG.derive.severity(days);
+    const sum = data.reduce((a, b) => a + b.value, 0);
+    const total = sum || 1;
     const R = 55, C = 70, CIRC = 2 * Math.PI * R;
     let acc = 0;
 
@@ -99,9 +102,11 @@
       .join("");
 
     const svg = $("#donutChart");
+    const track = sum ? "" : `<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="#1a212c" stroke-width="14"/>`;
     svg.innerHTML =
+      track +
       segs +
-      `<text class="donut-n" x="70" y="75" text-anchor="middle">${total}</text>
+      `<text class="donut-n" x="70" y="75" text-anchor="middle">${sum}</text>
        <text class="donut-l" x="70" y="91" text-anchor="middle">incidents</text>`;
 
     const n = svg.querySelector(".donut-n");
@@ -113,7 +118,7 @@
         l.textContent = d.label.toLowerCase();
       };
       c.onpointerleave = () => {
-        n.textContent = total;
+        n.textContent = sum;
         l.textContent = "incidents";
       };
       setTimeout(() => (c.style.opacity = 1), PG.reduceMotion ? 0 : 300 + i * 140);
@@ -131,9 +136,9 @@
   }
 
   /* ---------- tickets bar chart ---------- */
-  function bars(factor, delay = 60) {
-    const data = PG.tickets.map((d) => ({ ...d, value: Math.round(d.value * factor) }));
-    const max = Math.max(...data.map((d) => d.value));
+  function bars(days, delay = 60) {
+    const data = PG.derive.tickets(days);
+    const max = Math.max(1, ...data.map((d) => d.value));
     const el = $("#barChart");
     el.innerHTML = data
       .map(

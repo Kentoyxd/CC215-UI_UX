@@ -44,7 +44,7 @@
     uptime: {
       label: "Uptime summary",
       build(days) {
-        const s = PG.uptimeSeries(days);
+        const s = PG.derive.uptimeSeries(days);
         const now = Date.now();
         return {
           columns: ["Date", "Uptime %", "SLA (99.9%)"],
@@ -60,7 +60,7 @@
     incidents: {
       label: "Incident summary",
       build(days) {
-        const d = PG.severity.map((x) => ({ l: x.label, v: Math.round(x.value * PG.ranges[days].factor) }));
+        const d = PG.derive.severity(days).map((x) => ({ l: x.label, v: x.value }));
         const t = sum(d.map((x) => x.v));
         return {
           columns: ["Severity", "Incidents", "Share"],
@@ -72,7 +72,7 @@
     tickets: {
       label: "Ticket summary",
       build(days) {
-        const d = PG.tickets.map((x) => ({ l: x.label, v: Math.round(x.value * PG.ranges[days].factor) }));
+        const d = PG.derive.tickets(days).map((x) => ({ l: x.label, v: x.value }));
         const t = sum(d.map((x) => x.v));
         const top = d.reduce((a, b) => (b.v > a.v ? b : a));
         return {
@@ -126,7 +126,7 @@
 
   function initReports() {
     let history = store.get("pulsegrid:reports", []);
-    let sched = store.get("pulsegrid:schedules", { weekly: true });
+    let sched = store.get("pulsegrid:schedules", {});
     const v = $("#view-reports");
     v.innerHTML = `
       <div class="view-head"><h1>Reports</h1><p>Generate, download and schedule operational reports.</p></div>
@@ -189,14 +189,10 @@
   const ROLES = ["SRE", "Network Engineer", "Security Analyst", "Sysadmin", "DevOps", "Helpdesk"];
   const CHIP = { online: ["ok", "Online"], away: ["warn", "Away"], offline: ["off", "Offline"] };
   const NEXT = { online: "away", away: "offline", offline: "online" };
-  let team = store.get("pulsegrid:team", [
-    { id: 1, name: "R. Jones", role: "SRE", status: "online", tickets: 2, oncall: true },
-    { id: 2, name: "M. Alvarez", role: "Network Engineer", status: "online", tickets: 4, oncall: false },
-    { id: 3, name: "S. Okafor", role: "Security Analyst", status: "away", tickets: 5, oncall: false },
-    { id: 4, name: "L. Chen", role: "Sysadmin", status: "online", tickets: 3, oncall: false },
-    { id: 5, name: "D. Petrov", role: "Helpdesk", status: "offline", tickets: 0, oncall: false },
-    { id: 6, name: "A. Haddad", role: "DevOps", status: "away", tickets: 1, oncall: false },
-  ]);
+  let team = store.get("pulsegrid:team", []);
+  // Open tickets are counted from tickets assigned to the member by name (Tickets page).
+  const openFor = (m) =>
+    PG.store.data.tickets.filter((t) => t.status !== "resolved" && (t.assignee || "").trim().toLowerCase() === m.name.trim().toLowerCase()).length;
 
   function renderTeam() {
     const q = query.trim().toLowerCase();
@@ -205,7 +201,7 @@
     $("#teamStats").innerHTML = [
       ["Members", team.length],
       ["Online", team.filter((m) => m.status === "online").length],
-      ["Open tickets", sum(team.map((m) => m.tickets))],
+      ["Open tickets", sum(team.map(openFor))],
       ["On call now", oncall ? esc(oncall.name) : "—"],
     ]
       .map(([l, v]) => `<div class="kpi-card"><div class="kpi-value"${typeof v === "string" ? ' style="font-size:18px;line-height:26px"' : ""}>${v}</div><div class="kpi-label">${l}</div></div>`)
@@ -218,18 +214,18 @@
             <div class="person"><div class="avatar">${esc(initials(m.name))}</div>${esc(m.name)}</div>
             <div>${esc(m.role)}</div>
             <div><button class="status-chip ${c}" data-act="status" type="button" title="Click to change status">${l}</button></div>
-            <div>${m.tickets}</div>
+            <div>${openFor(m)}</div>
             <div class="team-actions">
               <button class="btn sm${m.oncall ? "" : " ghost"}" data-act="oncall" type="button">${m.oncall ? "On call ✓" : "Set on-call"}</button>
               <button class="btn ghost sm danger" data-act="remove" type="button" aria-label="Remove ${esc(m.name)}">✕</button>
             </div></div>`;
         }).join("")
-      : `<div class="empty">No team members match</div>`;
+      : `<div class="empty">${team.length ? "No team members match" : "No team members yet. Add one above."}</div>`;
   }
 
   function initTeam() {
     $("#view-team").innerHTML = `
-      <div class="view-head"><h1>Team</h1><p>Who is available, who is on call, and who is carrying the ticket load.</p></div>
+      <div class="view-head"><h1>Team</h1><p>Who is available, who is on call, and who is carrying the ticket load (counted from tickets assigned to them by name).</p></div>
       <div class="team-stats" id="teamStats"></div>
       <div class="panel">
         <div class="section-head"><h2>Team members</h2><span class="hint" id="teamHint"></span></div>
@@ -297,8 +293,6 @@
         <div>
           <div class="panel" style="margin-bottom:14px">
             <div class="section-head"><h2>Live data &amp; alerts</h2></div>
-            <div class="row-between"><div>Live updates<small>Simulated data drifts automatically</small></div>${sw("stLive", "Live updates")}</div>
-            <div class="row-between"><div>Update every</div><label class="field"><select id="stInt" aria-label="Update interval">${[3, 6, 12, 30].map((n) => `<option value="${n}">${n} seconds</option>`).join("")}</select></label></div>
             <div class="row-between"><div>Pop-up alerts<small>Toast when a region turns critical</small></div>${sw("stToast", "Pop-up alerts")}</div>
             <div class="row-between"><div>Alerts in activity feed</div>${sw("stFeed", "Alerts in activity feed")}</div>
           </div>
@@ -320,8 +314,6 @@
       $("#stWarnV").textContent = s.warn;
       $("#stCrit").value = s.critical;
       $("#stCritV").textContent = s.critical;
-      $("#stLive").checked = s.live;
-      $("#stInt").value = s.interval;
       $("#stToast").checked = s.toasts;
       $("#stFeed").checked = s.feedAlerts;
       $("#avatar").textContent = initials(s.name);
@@ -339,8 +331,6 @@
       const t = e.target;
       const map = {
         stName: () => S.set({ name: t.value.trim() }),
-        stLive: () => S.set({ live: t.checked }),
-        stInt: () => S.set({ interval: +t.value }),
         stToast: () => S.set({ toasts: t.checked }),
         stFeed: () => S.set({ feedAlerts: t.checked }),
       };
@@ -366,12 +356,13 @@
     init() {
       initReports();
       initTeam();
+      PG.store.on((c) => c === "tickets" && $("#teamList") && renderTeam());
       initSettings();
     },
     setQuery(q) {
       query = q;
       renderTeam();
     },
-    team: () => team,
+    team: () => team.map((m) => ({ ...m, tickets: openFor(m) })),
   };
 })();
