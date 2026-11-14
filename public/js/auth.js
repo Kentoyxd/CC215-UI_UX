@@ -26,6 +26,8 @@
     "auth/network-request-failed": "No connection. Check your network and try again.",
     "auth/operation-not-allowed": "This sign-in method isn't enabled in the Firebase console yet.",
     "auth/unauthorized-domain": "This domain isn't authorised. Add it under Authentication → Settings → Authorized domains.",
+    "auth/popup-blocked": "The sign-in popup was blocked. Allow popups for this site (or lower Brave Shields) and try again.",
+    "auth/web-storage-unsupported": "Your browser is blocking storage. Lower Brave Shields for this site and reload.",
   };
   const friendly = (e) => ERR[e && e.code] || `Something went wrong (${(e && (e.code || e.message)) || "unknown"}).`;
 
@@ -268,7 +270,7 @@
       return showProblem(
         denied
           ? "Access to your data was denied. Publish the Firestore security rules (firebase deploy --only firestore:rules)."
-          : "Couldn't load your data. Check your connection and that Firestore is created in the Firebase console.",
+          : "Couldn't load your data. Check your connection and that Firestore is created in the Firebase console. In Brave, try lowering Shields for this site.",
         () => start(user),
       );
     }
@@ -301,6 +303,13 @@
     firebase.initializeApp(cfg);
     auth = firebase.auth();
     db = firebase.firestore();
+    // Brave Shields (and some ad blockers) block Firestore's streaming connection.
+    // Long-polling works everywhere; force it in Brave, auto-detect elsewhere.
+    // Must run before the first Firestore call.
+    db.settings({
+      experimentalForceLongPolling: !!navigator.brave,
+      experimentalAutoDetectLongPolling: !navigator.brave,
+    });
     auth.onAuthStateChanged((user) => (user ? start(user) : showLogin()));
   }
   const configured = () => cfg.apiKey && !/^YOUR_/.test(cfg.apiKey) && window.firebase;

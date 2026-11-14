@@ -19,6 +19,12 @@
   }
   firebase.initializeApp(cfg);
   const db = firebase.firestore();
+  // Brave Shields (and some ad blockers) block Firestore's streaming connection.
+  // Long-polling works everywhere; force it in Brave, auto-detect elsewhere.
+  db.settings({
+    experimentalForceLongPolling: !!navigator.brave,
+    experimentalAutoDetectLongPolling: !navigator.brave,
+  });
   const state = { regions: [], incidents: [], got: {}, error: false };
 
   function listen(col) {

@@ -1,5 +1,4 @@
-/* Pulsegrid — admin data entry: Infrastructure (regions), Incidents, Tickets.
-   Each page is a form + table that writes to Firestore through PG.store. */
+
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -14,7 +13,6 @@
   };
   const chip = (cls, text) => `<span class="status-chip ${cls}">${esc(text)}</span>`;
   const labelOf = (opts, v) => (opts.find((o) => o[0] === v) || [v, v || "—"])[1];
-  // A select's options can be a fixed list or a function that is re-read each time (e.g. team members).
   const optsOf = (f) => (typeof f.opts === "function" ? f.opts() : f.opts);
   const isDynamic = (f) => typeof f.opts === "function";
 
@@ -25,7 +23,7 @@
   const INCIDENT_STATUS = [["investigating", "Investigating"], ["identified", "Identified"], ["monitoring", "Monitoring"], ["resolved", "Resolved"]];
   const TICKET_STATUS = [["open", "Open"], ["resolved", "Resolved"]];
   const CATS = PG.categories.map((c) => [c, c]);
-  // Assignee choices come from the Team page. "" means unassigned.
+  
   const TEAM_OPTS = () => [["", "Unassigned"], ...(PG.views && PG.views.team ? PG.views.team() : []).map((m) => [m.name, m.name])];
   const withResolved = (v, ex) => ({ ...v, resolvedAt: v.status === "resolved" ? (ex && ex.resolvedAt) || Date.now() : null });
 
@@ -159,8 +157,7 @@
       msg.className = "crud-msg" + (bad ? " bad" : "");
     };
 
-    // Rebuild a dropdown whose options come from live data (the team list) and select `cur`.
-    // If `cur` is no longer in the list (member removed or renamed), keep it as an option so editing never loses it.
+   
     function fillDynamic(f, cur) {
       const el = dom(f.k);
       const opts = optsOf(f).slice();
@@ -282,8 +279,6 @@
       dom(spec.fields[0].k).focus();
     });
 
-    // The team list lives on the Team page, so refresh the dropdown whenever the user
-    // navigates, and again just before they use it with the keyboard.
     if (spec.fields.some(isDynamic)) {
       document.addEventListener("click", (e) => e.target.closest(".nav-item") && refreshDynamic());
       spec.fields.filter(isDynamic).forEach((f) => dom(f.k).addEventListener("focus", refreshDynamic));
@@ -294,14 +289,7 @@
     paint();
   }
 
-  /* ---------- Admins page: create admins, invite admins, see who has access ----------
-     The sidebar link and the page container are created here, so index.html doesn't change.
-     Two ways to add an admin:
-       1. Create account: enter an email + temporary password. The account is created on a
-          second Firebase app instance (so you stay signed in) and its admin doc is written
-          right away.
-       2. Invite: a document in adminInvites/{email}. The invited person claims access the
-          first time they sign in with that (verified) email — see claimInvite() in auth.js. */
+
   function buildAdmins() {
     const fs = firebase.firestore();
     const stamp = firebase.firestore.FieldValue.serverTimestamp;
@@ -417,7 +405,7 @@
         .finally(() => (btn.disabled = false));
     }
 
-    // Create the login account AND the admin document in one step.
+   
     async function createAccount() {
       sayCa("");
       const email = v.querySelector("#caEmail").value.trim().toLowerCase();
@@ -429,13 +417,13 @@
       const btn = v.querySelector("#caCreate");
       btn.disabled = true;
       sayCa("Creating…");
-      // A second Firebase app, so creating the account doesn't sign you out.
+      
       let app2;
       try {
         app2 = firebase.initializeApp(window.FIREBASE_CONFIG, "create-admin-" + Date.now());
         const cred = await app2.auth().createUserWithEmailAndPassword(email, pw);
         try {
-          // Written with YOUR session (the main app), so the Firestore rules see an admin creating it.
+         
           await fs.collection("admins").doc(cred.user.uid).set({ email, via: "admin", createdAt: stamp() });
         } catch (err) {
           sayCa("Account created, but granting access failed. " + denied(err), true);
