@@ -5,10 +5,24 @@
 
 /* panel opens from the button and closes back toward it */
 .bot { transform-origin: calc(100% - 24px) 100%; }
-.bot:not([hidden]) { animation: bot-open 0.3s cubic-bezier(0.16, 0.84, 0.44, 1) both; }
+.bot.opening { animation: bot-open 0.42s cubic-bezier(0.34, 1.3, 0.5, 1) both; }
 .bot.closing { animation: bot-close 0.16s ease-in both; }
 @keyframes bot-open {
-  from { opacity: 0; transform: translateY(16px) scale(0.92); }
+  0% { opacity: 0; transform: translateY(22px) scale(0.85); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+/* header, messages and input fade up one after another */
+.bot.opening .bot-head,
+.bot.opening .bot-log,
+.bot.opening .bot-chips,
+.bot.opening .bot-form { animation: bot-part-in 0.35s ease both; }
+.bot.opening .bot-head { animation-delay: 0.08s; }
+.bot.opening .bot-log { animation-delay: 0.16s; }
+.bot.opening .bot-chips { animation-delay: 0.24s; }
+.bot.opening .bot-form { animation-delay: 0.3s; }
+@keyframes bot-part-in {
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
 @keyframes bot-close {

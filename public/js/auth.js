@@ -1,5 +1,6 @@
 /* Pulsegrid — sign-in and cloud sync (Firebase Auth + Firestore).
-   Flow: sign in → load this user's data into localStorage → start the app.
+   Flow: sign in → check admin access (or claim an admin invite) → load this user's data
+   into localStorage → start the app.
    Afterwards every "pulsegrid:*" localStorage write is also saved to Firestore (users/{uid}). */
 (function () {
   "use strict";
@@ -95,6 +96,26 @@
     }
   }
 
+  /* ---------- admin invites ---------- */
+  // An existing admin can invite an email address from the Admins page. The first time that
+  // person signs in with a verified email, they create their own admin document here.
+  // The Firestore rules only allow it if the invite exists and the email is verified.
+  async function claimInvite(user) {
+    if (!user.email || !user.emailVerified) return false;
+    const email = user.email.toLowerCase();
+    try {
+      await db.collection("admins").doc(user.uid).set({
+        email,
+        via: "invite",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      db.collection("adminInvites").doc(email).delete().catch(() => {}); // tidy up; not critical
+      return true;
+    } catch (_) {
+      return false; // no invite for this email (or not allowed)
+    }
+  }
+
   /* ---------- UI ---------- */
   function card(html) {
     if (!overlay) {
@@ -174,12 +195,42 @@
   }
 
   function showNoAccess(user) {
+    // Email/password accounts must verify their email before an invite can be claimed.
+    const needVerify = !!user.email && !user.emailVerified;
     const o = card(`<h1>No admin access</h1>
       <p class="auth-sub">This dashboard is for administrators. If you just want to check service status, use the public status page.</p>
       <a class="btn auth-main" href="status">Open status page</a>
-      <p class="auth-sub">Are you the owner? Add a document to the <b>admins</b> collection in Firestore with this ID:</p>
+      <p class="auth-sub">Signed in as <b>${esc(user.email || user.uid)}</b>. If an admin has invited this email, you can claim access${needVerify ? " after verifying it" : ""}.</p>
+      ${needVerify ? '<button class="btn auth-main" id="auVerify" type="button">Send verification email</button>' : ""}
+      <button class="btn ghost auth-main" id="auCheck" type="button">I've been invited. Check again</button>
+      <div class="auth-err" id="auMsg" role="status"></div>
+      <p class="auth-sub">Are you the owner and the very first admin? Add a document to the <b>admins</b> collection in Firestore with this ID:</p>
       <code class="auth-uid">${esc(user.uid)}</code>
       <button class="btn ghost auth-main" id="auOut" type="button">Sign out</button>`);
+    const say = (m) => (o.querySelector("#auMsg").textContent = m || "");
+    const verify = o.querySelector("#auVerify");
+    if (verify)
+      verify.onclick = async () => {
+        verify.disabled = true;
+        try {
+          await user.sendEmailVerification();
+          say(`Verification email sent to ${user.email}. Open the link in it, then press "Check again".`);
+        } catch (e) {
+          say(friendly(e));
+        }
+        verify.disabled = false;
+      };
+    o.querySelector("#auCheck").onclick = async () => {
+      say("Checking…");
+      try {
+        await user.reload();
+        await user.getIdToken(true); // pick up the new email_verified status
+        started = false;
+        await start(auth.currentUser || user);
+      } catch (e) {
+        say(friendly(e));
+      }
+    };
     o.querySelector("#auOut").onclick = () => auth.signOut().then(() => location.reload());
   }
 
@@ -198,8 +249,14 @@
     card(`<p class="auth-sub">Loading your workspace…</p>`);
     try {
       // The dashboard is for admins only (a document in the "admins" collection with their user ID).
-      const adminDoc = await db.collection("admins").doc(user.uid).get();
+      let adminDoc = await db.collection("admins").doc(user.uid).get();
+      // Not an admin yet? If an admin invited this email, claim it now.
+      if (!adminDoc.exists && (await claimInvite(user))) adminDoc = await db.collection("admins").doc(user.uid).get();
       if (!adminDoc.exists) return showNoAccess(user);
+      // Older admin documents have no email; add it so they show up properly on the Admins page.
+      if (!(adminDoc.data() || {}).email && user.email) {
+        db.collection("admins").doc(user.uid).set({ email: user.email.toLowerCase() }, { merge: true }).catch(() => {});
+      }
       await hydrate(user);
       patchStorage();
       started = true;

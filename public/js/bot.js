@@ -394,6 +394,21 @@
     if (role === "b" && el.panel.hidden) el.dot.hidden = false;
   }
 
+  // Keep the newest message in view. Glides when a message arrives, then re-pins
+  // once the slide-in has finished (the DOM is rebuilt on every render, which can
+  // cut a smooth scroll short, and a hidden panel has no height to scroll to).
+  function scrollToEnd(smooth) {
+    const box = el.log;
+    const bottom = () => box.scrollHeight - box.clientHeight;
+    box.scrollTo({ top: bottom(), behavior: smooth && !PG.reduceMotion ? "smooth" : "auto" });
+    requestAnimationFrame(() => {
+      if (!smooth) box.scrollTop = bottom();
+    });
+    setTimeout(() => {
+      if (bottom() - box.scrollTop > 2) box.scrollTop = bottom();
+    }, 380);
+  }
+
   // animateLast: play the entrance animation on the newest message (and the typing bubble)
   function renderLog(animateLast) {
     const lastIdx = log.length - 1;
@@ -402,7 +417,7 @@
         .map((m, i) => `<div class="bot-msg ${m.r === "u" ? "me" : "pulse"}${animateLast && i === lastIdx ? " in" : ""}">${m.h}</div>`)
         .join("") +
       (busy ? `<div class="bot-msg pulse typing in" aria-label="Pulse is typing"><i></i><i></i><i></i></div>` : "");
-    el.log.scrollTo({ top: el.log.scrollHeight, behavior: PG.reduceMotion || !animateLast ? "auto" : "smooth" });
+    scrollToEnd(animateLast);
     el.panel.classList.toggle("is-busy", busy > 0);
     const last = log[log.length - 1];
     el.chips.innerHTML =
@@ -446,9 +461,14 @@
   function setOpen(open, returnFocus) {
     clearTimeout(closeTimer);
     el.panel.classList.remove("closing");
-    if (open) el.panel.hidden = false;
-    else if (!el.panel.hidden) {
+    if (open) {
+      el.panel.hidden = false;
+      el.panel.classList.remove("opening");
+      void el.panel.offsetWidth; // force a reflow so the animation restarts every time
+      el.panel.classList.add("opening");
+    } else if (!el.panel.hidden) {
       // play the close animation, then hide
+      el.panel.classList.remove("opening");
       el.panel.classList.add("closing");
       closeTimer = setTimeout(
         () => {

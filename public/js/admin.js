@@ -14,6 +14,9 @@
   };
   const chip = (cls, text) => `<span class="status-chip ${cls}">${esc(text)}</span>`;
   const labelOf = (opts, v) => (opts.find((o) => o[0] === v) || [v, v || "—"])[1];
+  // A select's options can be a fixed list or a function that is re-read each time (e.g. team members).
+  const optsOf = (f) => (typeof f.opts === "function" ? f.opts() : f.opts);
+  const isDynamic = (f) => typeof f.opts === "function";
 
   const ENV = [["prod", "Production"], ["stg", "Staging"]];
   const REGION_STATUS = [["auto", "Auto (from load)"], ["ok", "Healthy"], ["warn", "Degraded"], ["crit", "Critical"]];
@@ -22,6 +25,8 @@
   const INCIDENT_STATUS = [["investigating", "Investigating"], ["identified", "Identified"], ["monitoring", "Monitoring"], ["resolved", "Resolved"]];
   const TICKET_STATUS = [["open", "Open"], ["resolved", "Resolved"]];
   const CATS = PG.categories.map((c) => [c, c]);
+  // Assignee choices come from the Team page. "" means unassigned.
+  const TEAM_OPTS = () => [["", "Unassigned"], ...(PG.views && PG.views.team ? PG.views.team() : []).map((m) => [m.name, m.name])];
   const withResolved = (v, ex) => ({ ...v, resolvedAt: v.status === "resolved" ? (ex && ex.resolvedAt) || Date.now() : null });
 
   const SPECS = [
@@ -83,13 +88,13 @@
     },
     {
       view: "tickets", col: "tickets", noun: "ticket", title: "Tickets",
-      blurb: "Support requests handled by your team. Tickets are private to admins.",
+      blurb: "Support requests handled by your team. Assignees are chosen from the Team page. Tickets are private to admins.",
       empty: "No tickets yet. Add your first one above.",
       fields: [
         { k: "title", label: "TITLE", type: "text", req: true, max: 120, ph: "VPN drops every hour" },
         { k: "category", label: "CATEGORY", type: "select", opts: CATS },
         { k: "status", label: "STATUS", type: "select", opts: TICKET_STATUS },
-        { k: "assignee", label: "ASSIGNEE", type: "text", max: 60, ph: "optional" },
+        { k: "assignee", label: "ASSIGNEE", type: "select", opts: TEAM_OPTS },
         { k: "openedAt", label: "OPENED", type: "datetime" },
       ],
       cols: [
@@ -115,7 +120,7 @@
       const ph = esc(f.ph || "");
       const input =
         f.type === "select"
-          ? `<select data-k="${f.k}">${f.opts.map(([val, l]) => `<option value="${esc(val)}">${esc(l)}</option>`).join("")}</select>`
+          ? `<select data-k="${f.k}">${optsOf(f).map(([val, l]) => `<option value="${esc(val)}">${esc(l)}</option>`).join("")}</select>`
           : f.type === "textarea"
             ? `<textarea data-k="${f.k}" rows="3" maxlength="${f.max || 500}" placeholder="${ph}"></textarea>`
             : `<input data-k="${f.k}" type="${f.type === "datetime" ? "datetime-local" : f.type}" placeholder="${ph}"
@@ -154,10 +159,24 @@
       msg.className = "crud-msg" + (bad ? " bad" : "");
     };
 
+    // Rebuild a dropdown whose options come from live data (the team list) and select `cur`.
+    // If `cur` is no longer in the list (member removed or renamed), keep it as an option so editing never loses it.
+    function fillDynamic(f, cur) {
+      const el = dom(f.k);
+      const opts = optsOf(f).slice();
+      if (cur && !opts.some((o) => o[0] === cur)) opts.push([cur, `${cur} (not on team)`]);
+      el.innerHTML = opts.map(([val, l]) => `<option value="${esc(val)}">${esc(l)}</option>`).join("");
+      el.value = cur || opts[0][0];
+    }
+    function refreshDynamic() {
+      spec.fields.filter(isDynamic).forEach((f) => fillDynamic(f, dom(f.k).value));
+    }
+
     function reset() {
       editing = null;
       spec.fields.forEach((f) => {
-        dom(f.k).value = f.type === "datetime" ? toInput() : f.def != null ? f.def : f.type === "select" ? f.opts[0][0] : "";
+        if (isDynamic(f)) return fillDynamic(f, "");
+        dom(f.k).value = f.type === "datetime" ? toInput() : f.def != null ? f.def : f.type === "select" ? optsOf(f)[0][0] : "";
       });
       title.textContent = `Add ${spec.noun}`;
       save.textContent = `Add ${spec.noun}`;
@@ -226,6 +245,7 @@
         : `<tr><td colspan="${spec.cols.length + 1}" class="empty">${spec.empty}</td></tr>`;
       const dl = v.querySelector("#dlRegions");
       if (dl) dl.innerHTML = PG.store.data.regions.map((r) => `<option value="${esc(r.name)}"></option>`).join("");
+      refreshDynamic();
     }
 
     save.addEventListener("click", submit);
@@ -252,6 +272,7 @@
       editing = rec;
       const vals = spec.edit(rec);
       spec.fields.forEach((f) => {
+        if (isDynamic(f)) return fillDynamic(f, vals[f.k] || "");
         dom(f.k).value = f.type === "datetime" ? toInput(vals[f.k]) : vals[f.k] != null ? vals[f.k] : "";
       });
       title.textContent = `Edit ${spec.noun}`;
@@ -261,10 +282,153 @@
       dom(spec.fields[0].k).focus();
     });
 
+    // The team list lives on the Team page, so refresh the dropdown whenever the user
+    // navigates, and again just before they use it with the keyboard.
+    if (spec.fields.some(isDynamic)) {
+      document.addEventListener("click", (e) => e.target.closest(".nav-item") && refreshDynamic());
+      spec.fields.filter(isDynamic).forEach((f) => dom(f.k).addEventListener("focus", refreshDynamic));
+    }
+
     PG.store.on((col) => (col === spec.col || col === "regions") && paint());
     reset();
     paint();
   }
 
-  PG.admin = { init: () => SPECS.forEach(build) };
+  /* ---------- Admins page: who can sign in, plus pending invites ----------
+     The sidebar link and the page container are created here, so index.html doesn't change.
+     Invites are documents in adminInvites/{email}. The invited person claims access the first
+     time they sign in with that (verified) email — see claimInvite() in auth.js. */
+  function buildAdmins() {
+    const fs = firebase.firestore();
+    const stamp = firebase.firestore.FieldValue.serverTimestamp;
+    const me = () => firebase.auth().currentUser || {};
+    const ts = (x) => (x && x.toMillis ? x.toMillis() : 0);
+    let admins = [];
+    let invites = [];
+
+    const v = document.createElement("div");
+    v.className = "view";
+    v.id = "view-admins";
+    v.hidden = true;
+    $("main").appendChild(v);
+
+    const teamLink = [...document.querySelectorAll(".nav-item")].find((i) => i.textContent.trim() === "Team");
+    const link = document.createElement("div");
+    link.className = "nav-item";
+    link.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 3 7v6c0 5 4 8.5 9 9 5-.5 9-4 9-9V7z"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17c.6-1.9 2.2-3 4-3s3.4 1.1 4 3"/></svg>Admins`;
+    if (teamLink) teamLink.insertAdjacentElement("afterend", link);
+    else document.querySelector(".sidebar .nav").appendChild(link);
+    PG.ui.activate(link, () => PG.ui.navTo("Admins"));
+
+    v.innerHTML = `
+      <div class="view-head"><h1>Admins</h1><p>People who can sign in and manage this dashboard. Invite someone by email. They get access the first time they sign in with that address.</p></div>
+      <div class="panel crud-panel">
+        <div class="section-head"><h2>Invite an admin</h2></div>
+        <div class="crud-form"><label class="field wide">EMAIL<input id="adEmail" type="email" maxlength="120" placeholder="name@company.com" autocomplete="off" /></label></div>
+        <div class="crud-bar"><button class="btn" id="adInvite" type="button">Invite admin</button><span class="crud-msg" id="adMsg" role="status"></span></div>
+        <p class="note">No email is sent, so tell them to open the dashboard and sign in with this address. They can use Google sign-in, or an email and password they have verified.</p>
+      </div>
+      <div class="panel crud-panel">
+        <div class="section-head"><h2>Admins</h2><span class="hint" id="adCount"></span></div>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>Admin</th><th>Added</th><th></th></tr></thead>
+          <tbody id="adBody"></tbody>
+        </table></div>
+      </div>
+      <div class="panel crud-panel">
+        <div class="section-head"><h2>Pending invites</h2><span class="hint" id="inCount"></span></div>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>Email</th><th>Invited by</th><th>Invited</th><th></th></tr></thead>
+          <tbody id="inBody"></tbody>
+        </table></div>
+      </div>`;
+
+    const msg = v.querySelector("#adMsg");
+    const say = (t, bad) => {
+      msg.textContent = t;
+      msg.className = "crud-msg" + (bad ? " bad" : "");
+    };
+    const denied = (err) =>
+      err && err.code === "permission-denied"
+        ? "Permission denied. Publish the latest Firestore rules (firebase deploy --only firestore:rules)."
+        : `Couldn't do that (${(err && (err.code || err.message)) || "unknown error"}).`;
+
+    function paint() {
+      const sorted = admins.slice().sort((a, b) => (a.email || a.id).localeCompare(b.email || b.id));
+      v.querySelector("#adCount").textContent = `${sorted.length} total`;
+      v.querySelector("#adBody").innerHTML = sorted.length
+        ? sorted
+            .map((a) => {
+              const self = a.id === me().uid;
+              return `<tr data-id="${esc(a.id)}">
+                <td><b>${esc(a.email || "No email saved")}</b>${self ? ' <span class="status-chip ok">You</span>' : ""}<div class="dim">${esc(a.id)}</div></td>
+                <td>${fmt(ts(a.createdAt))}</td>
+                <td class="crud-actions"><button class="btn ghost sm danger" data-act="rm" type="button"${self ? ' disabled title="You can\'t remove yourself" style="opacity:.4;cursor:default"' : ""}>Remove</button></td></tr>`;
+            })
+            .join("")
+        : `<tr><td colspan="3" class="empty">No admins found.</td></tr>`;
+
+      const inv = invites.slice().sort((a, b) => ts(b.createdAt) - ts(a.createdAt));
+      v.querySelector("#inCount").textContent = `${inv.length} pending`;
+      v.querySelector("#inBody").innerHTML = inv.length
+        ? inv
+            .map(
+              (i) => `<tr data-id="${esc(i.id)}"><td><b>${esc(i.email || i.id)}</b></td><td>${esc(i.invitedBy || "—")}</td><td>${fmt(ts(i.createdAt))}</td>
+                <td class="crud-actions"><button class="btn ghost sm" data-act="revoke" type="button">Revoke</button></td></tr>`,
+            )
+            .join("")
+        : `<tr><td colspan="4" class="empty">No pending invites.</td></tr>`;
+    }
+
+    function invite() {
+      say("");
+      const email = v.querySelector("#adEmail").value.trim().toLowerCase();
+      if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(email)) return say("Enter a valid email address.", true);
+      if (admins.some((a) => (a.email || "").toLowerCase() === email)) return say("That person is already an admin.", true);
+      const btn = v.querySelector("#adInvite");
+      btn.disabled = true;
+      fs.collection("adminInvites")
+        .doc(email)
+        .set({ email, invitedBy: me().email || "", createdAt: stamp() })
+        .then(() => {
+          v.querySelector("#adEmail").value = "";
+          PG.ui.toast(`Invite added for ${email}`);
+        })
+        .catch((err) => say(denied(err), true))
+        .finally(() => (btn.disabled = false));
+    }
+
+    v.querySelector("#adInvite").addEventListener("click", invite);
+    v.querySelector("#adEmail").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        invite();
+      }
+    });
+
+    v.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (!btn || btn.disabled) return;
+      const id = btn.closest("tr").dataset.id;
+      if (btn.dataset.act === "rm") {
+        const a = admins.find((x) => x.id === id);
+        if (!confirm(`Remove ${(a && a.email) || "this admin"}? They will lose access to the dashboard.`)) return;
+        fs.collection("admins").doc(id).delete().then(() => PG.ui.toast("Admin removed"), (err) => PG.ui.toast(denied(err)));
+      } else if (btn.dataset.act === "revoke") {
+        fs.collection("adminInvites").doc(id).delete().then(() => PG.ui.toast("Invite revoked"), (err) => PG.ui.toast(denied(err)));
+      }
+    });
+
+    const read = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }));
+    fs.collection("admins").onSnapshot((s) => ((admins = read(s)), paint()), (err) => say(denied(err), true));
+    fs.collection("adminInvites").onSnapshot((s) => ((invites = read(s)), paint()), (err) => say(denied(err), true));
+    paint();
+  }
+
+  PG.admin = {
+    init: () => {
+      SPECS.forEach(build);
+      buildAdmins();
+    },
+  };
 })();

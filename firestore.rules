@@ -3,15 +3,36 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    // An admin is anyone who has a document in the "admins" collection (create it in the console).
+    // An admin is anyone who has a document in the "admins" collection.
+    // The first admin is still created by hand in the Firebase console; after that,
+    // admins invite and remove each other from the Admins page in the dashboard.
     function isAdmin() {
       return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Lets the dashboard check "am I an admin?". Nobody can write here from the app.
     match /admins/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-      allow write: if false;
+      // You can read your own doc (to check access); admins can read all (to list them).
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      // Claiming an invite: you can create YOUR OWN admin doc, but only if an admin
+      // invited your email and your email is verified (Google sign-in always is).
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/adminInvites/$(request.auth.token.email.lower()))
+        && request.resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'via']);
+
+      // An admin can update their own doc (used to store their email for the Admins list).
+      allow update: if isAdmin() && request.auth.uid == uid;
+
+      // Admins can remove other admins, but never themselves (so you can't lock everyone out).
+      allow delete: if isAdmin() && request.auth.uid != uid;
+    }
+
+    // Pending invites, keyed by lower-case email. Only admins can see or manage them.
+    match /adminInvites/{email} {
+      allow read, write: if isAdmin();
     }
 
     // Each admin's private settings / chat / preferences.

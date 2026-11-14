@@ -101,12 +101,13 @@
     Tickets: ["tickets"],
     Reports: ["reports"],
     Team: ["team"],
+    Admins: ["admins"],
     Settings: ["settings"],
   };
-  let navItems = [];
   function navTo(label, scroll = true) {
     const [view, anchor] = NAV[label];
-    navItems.forEach((i) => i.classList.toggle("active", i.textContent.trim() === label));
+    // Read the nav items each time, so items added later (like Admins) highlight correctly.
+    document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.textContent.trim() === label));
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
     try {
       history.replaceState(null, "", view === "overview" ? location.pathname + location.search : "#" + view);
@@ -117,11 +118,10 @@
     else window.scrollTo({ top: 0, behavior });
   }
   function initNav() {
-    navItems = [...document.querySelectorAll(".nav-item")];
-    navItems.forEach((item) => activate(item, () => navTo(item.textContent.trim())));
+    document.querySelectorAll(".nav-item").forEach((item) => activate(item, () => navTo(item.textContent.trim())));
   }
   function openFromHash() {
-    const label = { infra: "Infrastructure", incidents: "Incidents", tickets: "Tickets", reports: "Reports", team: "Team", settings: "Settings" }[location.hash.slice(1)];
+    const label = { infra: "Infrastructure", incidents: "Incidents", tickets: "Tickets", reports: "Reports", team: "Team", admins: "Admins", settings: "Settings" }[location.hash.slice(1)];
     if (label) navTo(label, false);
   }
 
