@@ -294,15 +294,20 @@
     paint();
   }
 
-  /* ---------- Admins page: who can sign in, plus pending invites ----------
+  /* ---------- Admins page: create admins, invite admins, see who has access ----------
      The sidebar link and the page container are created here, so index.html doesn't change.
-     Invites are documents in adminInvites/{email}. The invited person claims access the first
-     time they sign in with that (verified) email — see claimInvite() in auth.js. */
+     Two ways to add an admin:
+       1. Create account: enter an email + temporary password. The account is created on a
+          second Firebase app instance (so you stay signed in) and its admin doc is written
+          right away.
+       2. Invite: a document in adminInvites/{email}. The invited person claims access the
+          first time they sign in with that (verified) email — see claimInvite() in auth.js. */
   function buildAdmins() {
     const fs = firebase.firestore();
     const stamp = firebase.firestore.FieldValue.serverTimestamp;
     const me = () => firebase.auth().currentUser || {};
     const ts = (x) => (x && x.toMillis ? x.toMillis() : 0);
+    const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
     let admins = [];
     let invites = [];
 
@@ -321,12 +326,21 @@
     PG.ui.activate(link, () => PG.ui.navTo("Admins"));
 
     v.innerHTML = `
-      <div class="view-head"><h1>Admins</h1><p>People who can sign in and manage this dashboard. Invite someone by email. They get access the first time they sign in with that address.</p></div>
+      <div class="view-head"><h1>Admins</h1><p>People who can sign in and manage this dashboard. Create an admin account directly, or invite someone by email.</p></div>
+      <div class="panel crud-panel">
+        <div class="section-head"><h2>Create an admin account</h2></div>
+        <div class="crud-form">
+          <label class="field">EMAIL<input id="caEmail" type="email" maxlength="120" placeholder="name@company.com" autocomplete="off" /></label>
+          <label class="field">TEMPORARY PASSWORD<input id="caPass" type="text" minlength="6" maxlength="60" placeholder="at least 6 characters" autocomplete="off" /></label>
+        </div>
+        <div class="crud-bar"><button class="btn" id="caCreate" type="button">Create admin</button><span class="crud-msg" id="caMsg" role="status"></span></div>
+        <p class="note">Creates the account and gives it admin access immediately. Share the email and temporary password with them privately. They can use "Forgot password?" on the sign-in screen to choose their own.</p>
+      </div>
       <div class="panel crud-panel">
         <div class="section-head"><h2>Invite an admin</h2></div>
         <div class="crud-form"><label class="field wide">EMAIL<input id="adEmail" type="email" maxlength="120" placeholder="name@company.com" autocomplete="off" /></label></div>
         <div class="crud-bar"><button class="btn" id="adInvite" type="button">Invite admin</button><span class="crud-msg" id="adMsg" role="status"></span></div>
-        <p class="note">No email is sent, so tell them to open the dashboard and sign in with this address. They can use Google sign-in, or an email and password they have verified.</p>
+        <p class="note">No email is sent, so tell them to open the dashboard and sign in with this address. They can use Google sign-in, or an email and password they have verified. Use this for people who already have an account.</p>
       </div>
       <div class="panel crud-panel">
         <div class="section-head"><h2>Admins</h2><span class="hint" id="adCount"></span></div>
@@ -347,6 +361,11 @@
     const say = (t, bad) => {
       msg.textContent = t;
       msg.className = "crud-msg" + (bad ? " bad" : "");
+    };
+    const caMsg = v.querySelector("#caMsg");
+    const sayCa = (t, bad) => {
+      caMsg.textContent = t;
+      caMsg.className = "crud-msg" + (bad ? " bad" : "");
     };
     const denied = (err) =>
       err && err.code === "permission-denied"
@@ -383,7 +402,7 @@
     function invite() {
       say("");
       const email = v.querySelector("#adEmail").value.trim().toLowerCase();
-      if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(email)) return say("Enter a valid email address.", true);
+      if (!EMAIL_RE.test(email)) return say("Enter a valid email address.", true);
       if (admins.some((a) => (a.email || "").toLowerCase() === email)) return say("That person is already an admin.", true);
       const btn = v.querySelector("#adInvite");
       btn.disabled = true;
@@ -398,11 +417,71 @@
         .finally(() => (btn.disabled = false));
     }
 
+    // Create the login account AND the admin document in one step.
+    async function createAccount() {
+      sayCa("");
+      const email = v.querySelector("#caEmail").value.trim().toLowerCase();
+      const pw = v.querySelector("#caPass").value;
+      if (!EMAIL_RE.test(email)) return sayCa("Enter a valid email address.", true);
+      if (pw.length < 6) return sayCa("Use a password with at least 6 characters.", true);
+      if (admins.some((a) => (a.email || "").toLowerCase() === email)) return sayCa("That person is already an admin.", true);
+
+      const btn = v.querySelector("#caCreate");
+      btn.disabled = true;
+      sayCa("Creating…");
+      // A second Firebase app, so creating the account doesn't sign you out.
+      let app2;
+      try {
+        app2 = firebase.initializeApp(window.FIREBASE_CONFIG, "create-admin-" + Date.now());
+        const cred = await app2.auth().createUserWithEmailAndPassword(email, pw);
+        try {
+          // Written with YOUR session (the main app), so the Firestore rules see an admin creating it.
+          await fs.collection("admins").doc(cred.user.uid).set({ email, via: "admin", createdAt: stamp() });
+        } catch (err) {
+          sayCa("Account created, but granting access failed. " + denied(err), true);
+          return;
+        }
+        fs.collection("adminInvites").doc(email).delete().catch(() => {}); // clear any old invite
+        v.querySelector("#caEmail").value = "";
+        v.querySelector("#caPass").value = "";
+        sayCa("");
+        PG.ui.toast(`Admin account created for ${email}`);
+      } catch (err) {
+        sayCa(
+          err && err.code === "auth/email-already-in-use"
+            ? 'That email already has an account. Use "Invite an admin" below instead.'
+            : err && err.code === "auth/weak-password"
+              ? "Use a stronger password (at least 6 characters)."
+              : err && err.code === "auth/invalid-email"
+                ? "Enter a valid email address."
+                : err && err.code === "auth/operation-not-allowed"
+                  ? "Email/password sign-in isn't enabled in the Firebase console."
+                  : `Couldn't create the account (${(err && (err.code || err.message)) || "unknown error"}).`,
+          true,
+        );
+      } finally {
+        if (app2) {
+          try {
+            await app2.auth().signOut();
+          } catch (_) {}
+          app2.delete().catch(() => {});
+        }
+        btn.disabled = false;
+      }
+    }
+
     v.querySelector("#adInvite").addEventListener("click", invite);
     v.querySelector("#adEmail").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         invite();
+      }
+    });
+    v.querySelector("#caCreate").addEventListener("click", createAccount);
+    v.querySelector("#caPass").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        createAccount();
       }
     });
 

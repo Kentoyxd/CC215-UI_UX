@@ -2,7 +2,12 @@
    it reads live dashboard data, can change filters/settings for you, and
    remembers your name, recent chat and the topics you ask about most.
    Built-in rules answer common questions instantly; anything they don't
-   understand is passed to Gemini (Firebase AI Logic) with the dashboard data. */
+   understand is passed to Gemini (Firebase AI Logic) with the dashboard data.
+   Personality: calm, warm and dry-witted. Reads the room: relaxed when everything
+   is green, serious when something is critical.
+   Voice: Pulse can read its replies aloud (browser text-to-speech) and you can talk
+   to it with the microphone button (browser speech recognition). Voice is off by
+   default; the speaker button in the header turns it on. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -27,10 +32,11 @@
     } catch (_) {}
   };
 
-  const mem = Object.assign({ topics: {}, lastOpen: 0 }, read(MEM_KEY, {}));
+  const mem = Object.assign({ topics: {}, lastOpen: 0, voice: false, voiceName: "" }, read(MEM_KEY, {}));
   let log = read(CHAT_KEY, []);
   let busy = 0;
   let el = {};
+  const PLACEHOLDER = "Ask about regions, uptime, tickets…";
 
   /* ---------- who the user is ---------- */
   const settings = () => PG.settings.get();
@@ -71,6 +77,86 @@
   const lines = (a) => a.join("<br>");
   const names = (a) => a.map((r) => `<b>${esc(r.name)}</b>`).join(", ");
 
+  /* ---------- personality ---------- */
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  // Pulse reads the room: serious when something is critical, relaxed when all is well.
+  const mood = () => {
+    const rs = regions();
+    if (rs.some((r) => r.status === "Critical")) return "crit";
+    if (rs.some((r) => r.status === "Degraded")) return "warn";
+    return "calm";
+  };
+
+  const JOKES = [
+    "Why did the server go to therapy? Too many unresolved dependencies.",
+    "It's not DNS. There's no way it's DNS. It was DNS.",
+    'A SQL query walks into a bar, sees two tables and asks: "Can I join you?"',
+    "I'd tell you a UDP joke, but you might not get it.",
+    "There are 10 kinds of people: those who understand binary and those who don't.",
+    "My favourite uptime is the one nobody mentions in the stand-up.",
+    "Why do sysadmins love autumn? Everything finally gets rebooted.",
+  ];
+
+  // Small talk and easter eggs. Returns null when nothing matches.
+  function chatter(t) {
+    const c = suggestions();
+    const m = mood();
+    if (/\b(joke|funny|make me laugh)\b/.test(t)) {
+      const lead = m === "crit" ? "Bad timing, but morale matters. " : "";
+      return { h: lead + esc(pick(JOKES)), c };
+    }
+    if (/\b(who are you|your name|what are you)\b/.test(t))
+      return { h: "I'm <b>Pulse</b>, the dashboard's resident night owl. I watch your regions so you can blink.", c };
+    if (/\bare you (a |an )?(human|real|person|robot|bot|ai|alive)\b/.test(t))
+      return {
+        h: pick([
+          "Not human, not quite a robot. Think of me as a very attentive heartbeat monitor with opinions.",
+          "I'm software with good timing. Real enough to tell you when something's on fire.",
+        ]),
+        c,
+      };
+    if (/\b(love you|you('re| are) (great|awesome|the best|amazing|funny)|good bot|nice work)\b/.test(t))
+      return {
+        h: pick([
+          `Stop it, ${esc(who())}, you'll make my load spike.`,
+          'Noted. I\'ll put that in the uptime report under "morale".',
+          "Aw. Back to the graphs, then?",
+        ]),
+        c,
+      };
+    if (/\b(bad bot|you suck|useless|stupid|dumb)\b/.test(t))
+      return {
+        h: pick([
+          "Fair. I'm still learning your dashboard. Tell me what you were after and I'll do better.",
+          'Ouch. Try "help" and I\'ll show you what I\'m actually good at.',
+        ]),
+        c,
+      };
+    if (/\b(coffee|tea|caffeine)\b/.test(t))
+      return {
+        h: pick([
+          "Coffee is the real production dependency. Please don't deploy without it.",
+          "I run on electricity and good vibes. You'll have to drink the coffee for both of us.",
+        ]),
+        c,
+      };
+    if (/\bmeaning of life\b/.test(t)) return { h: "42 regions, zero incidents. Or so the legend says.", c };
+    if (/\b(bored|nothing to do)\b/.test(t))
+      return {
+        h: m === "calm" ? "Boring is the goal in ops. Enjoy it while it lasts. Want a joke?" : "Bored? Not with those regions. Ask me which need attention.",
+        c,
+      };
+    if (/\b(tired|exhausted|long day|stressed|burn(ed|t) out)\b/.test(t))
+      return {
+        h:
+          m === "crit"
+            ? "I hear you. Let's get this one sorted, then take a proper break. Want the rundown?"
+            : "Rough day? Everything looks steady from here, so take a breath. I've got the watch.",
+        c,
+      };
+    return null;
+  }
+
   function findRegion(t) {
     const stg = /\b(staging|stg)\b/.test(t);
     const city = (r) => (r.region || "").replace(/\(.*\)/, "").replace(/^n\.\s*/i, "").trim().toLowerCase();
@@ -78,6 +164,189 @@
       .filter((r) => stg === (r.env === "stg") || t.includes(r.name.toLowerCase()))
       .sort((a, b) => b.name.length - a.name.length)
       .find((r) => t.includes(r.name.toLowerCase()) || (city(r) && t.includes(city(r))));
+  }
+
+  /* ---------- voice: speaking (text-to-speech) ----------
+     Uses the browser's built-in speechSynthesis. Nothing is sent anywhere for this. */
+  const TTS = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  let voices = [];
+  let speakId = 0;
+
+  function loadVoices() {
+    if (!TTS) return;
+    voices = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
+  }
+  if (TTS) {
+    loadVoices();
+    // Chrome loads the voice list asynchronously.
+    speechSynthesis.addEventListener && speechSynthesis.addEventListener("voiceschanged", loadVoices);
+  }
+
+  // Pick the saved voice, else the most natural-sounding English one available.
+  function chooseVoice() {
+    if (mem.voiceName) {
+      const saved = voices.find((v) => v.name === mem.voiceName);
+      if (saved) return saved;
+    }
+    const rank = (v) =>
+      (/natural|neural|online/i.test(v.name) ? 4 : 0) +
+      (/google us english|samantha|aria|jenny|ava|zira/i.test(v.name) ? 3 : 0) +
+      (v.lang === "en-US" ? 2 : 0) +
+      (v.localService ? 1 : 0);
+    return voices.slice().sort((a, b) => rank(b) - rank(a))[0] || null;
+  }
+
+  function cycleVoice() {
+    if (!TTS || voices.length < 2) return null;
+    const i = voices.indexOf(chooseVoice());
+    const next = voices[(i + 1) % voices.length];
+    mem.voiceName = next.name;
+    write(MEM_KEY, mem);
+    return next;
+  }
+
+  // HTML message -> plain text that sounds right when spoken.
+  function toSpeech(html) {
+    const doc = new DOMParser().parseFromString(String(html).replace(/<br\s*\/?>/gi, ". "), "text/html");
+    return (doc.body.textContent || "")
+      .replace(/(\d)\s?ms\b/g, "$1 milliseconds")
+      .replace(/·/g, ",")
+      .replace(/\s+/g, " ")
+      .replace(/([.!?])\s*\./g, "$1")
+      .trim();
+  }
+
+  const setSpeaking = (on) => el.panel && el.panel.classList.toggle("is-speaking", on);
+
+  function stopSpeaking() {
+    if (!TTS) return;
+    speakId++;
+    speechSynthesis.cancel();
+    setSpeaking(false);
+  }
+
+  function speak(html) {
+    if (!TTS) return;
+    stopSpeaking();
+    const text = toSpeech(html);
+    if (!text) return;
+    // Short chunks, because some browsers cut off long utterances.
+    const parts = (text.match(/[^.!?]+[.!?]*/g) || [text]).map((p) => p.trim()).filter(Boolean);
+    const voice = chooseVoice();
+    const id = speakId;
+    const rate = mood() === "crit" ? 1.1 : 1; // a touch quicker when something is on fire
+    parts.forEach((p, i) => {
+      const u = new SpeechSynthesisUtterance(p);
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang;
+      }
+      u.rate = rate;
+      u.pitch = 1;
+      if (i === 0) u.onstart = () => id === speakId && setSpeaking(true);
+      if (i === parts.length - 1) u.onend = u.onerror = () => id === speakId && setSpeaking(false);
+      speechSynthesis.speak(u);
+    });
+  }
+
+  const ICON = {
+    on: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+    off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>',
+    mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>',
+  };
+
+  function paintVoice() {
+    if (!el.voice) return;
+    el.voice.innerHTML = mem.voice ? ICON.on : ICON.off;
+    el.voice.setAttribute("aria-pressed", String(!!mem.voice));
+    const label = mem.voice ? "Voice on. Click to mute Pulse" : "Voice off. Click to let Pulse speak";
+    el.voice.title = label;
+    el.voice.setAttribute("aria-label", label);
+  }
+
+  function setVoice(on, announce) {
+    mem.voice = !!on;
+    write(MEM_KEY, mem);
+    paintVoice();
+    if (!on) stopSpeaking();
+    else if (announce) speak("Voice on. I'll read my replies aloud.");
+  }
+
+  /* ---------- voice: listening (speech recognition) ----------
+     Uses the browser's SpeechRecognition. In Chrome and Edge the audio is processed by the
+     browser vendor's speech service, so it only starts when you press the mic button. */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+  let listening = false;
+  let discardHeard = false;
+
+  function paintMic() {
+    if (!el.mic) return;
+    el.mic.classList.toggle("listening", listening);
+    el.mic.setAttribute("aria-pressed", String(listening));
+    const label = listening ? "Stop listening" : "Talk to Pulse";
+    el.mic.title = label;
+    el.mic.setAttribute("aria-label", label);
+    el.input.placeholder = listening ? "Listening…" : PLACEHOLDER;
+  }
+
+  function stopListening(discard) {
+    if (!rec || !listening) return;
+    discardHeard = !!discard;
+    try {
+      discard ? rec.abort() : rec.stop();
+    } catch (_) {}
+  }
+
+  function startListening() {
+    if (!SR || busy) return;
+    if (listening) return stopListening(false);
+    stopSpeaking(); // so Pulse doesn't hear itself
+    let heard = "";
+    discardHeard = false;
+    rec = new SR();
+    rec.lang = navigator.language || "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    rec.onstart = () => {
+      listening = true;
+      paintMic();
+    };
+    rec.onresult = (e) => {
+      let finalText = "";
+      let interim = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalText += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      heard = (finalText + " " + interim).trim();
+      el.input.value = heard;
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed")
+        PG.ui.toast("Microphone is blocked. Allow it in your browser's site settings.");
+      else if (e.error === "no-speech") PG.ui.toast("I didn't hear anything.");
+      else if (e.error === "network") PG.ui.toast("Voice input needs an internet connection.");
+      else if (e.error !== "aborted") PG.ui.toast("Voice input isn't working right now.");
+    };
+    rec.onend = () => {
+      listening = false;
+      paintMic();
+      const text = heard.trim();
+      if (discardHeard || !text) {
+        if (discardHeard) el.input.value = "";
+        return;
+      }
+      send(text, true);
+    };
+    try {
+      rec.start();
+    } catch (_) {
+      listening = false;
+      paintMic();
+    }
   }
 
   /* ---------- Gemini (Firebase AI Logic) ----------
@@ -107,8 +376,10 @@
         return getGenerativeModel(ai, {
           model: GEMINI_MODEL,
           systemInstruction:
-            "You are Pulse, an assistant inside an IT operations dashboard. " +
+            "You are Pulse, a calm, warm, dry-witted assistant inside an IT operations dashboard. " +
             "Answer briefly (max 4 sentences) using ONLY the JSON data provided. " +
+            "You may add one light, friendly quip, but never joke when a region is Critical or an incident is open. " +
+            "Your reply may be read aloud, so write plain sentences with no lists, symbols or abbreviations that sound odd when spoken. " +
             "If the data doesn't contain the answer, say so. Plain text, no markdown.",
         });
       })();
@@ -165,11 +436,17 @@
     const warn = rs.filter((r) => r.status === "Degraded");
     const mine = me();
     let h = `${part}, <b>${esc(who())}</b>.`;
-    if (mine && mine.oncall) h += " You're on call right now.";
+    if (hr < 5) h += " The graphs never sleep, so neither do I.";
+    if (mine && mine.oncall) h += " You're on call right now. May the pager be quiet.";
     h += "<br>";
-    if (crit.length) h += `Heads-up: ${names(crit)} ${crit.length > 1 ? "are" : "is"} critical.`;
-    else if (warn.length) h += `${plural(warn.length, "region")} degraded, nothing critical.`;
-    else h += "All regions look healthy.";
+    if (crit.length) h += `Heads-up: ${names(crit)} ${crit.length > 1 ? "are" : "is"} critical. Let's go.`;
+    else if (warn.length) h += `${plural(warn.length, "region")} degraded, nothing critical. Just a little grumpy.`;
+    else
+      h += pick([
+        "All regions look healthy. Suspiciously calm.",
+        "Everything is green. I love it when that happens.",
+        "All regions healthy. Quiet shift so far.",
+      ]);
     if (mine && mine.tickets) h += ` You have ${plural(mine.tickets, "open ticket")}.`;
     return { h, c: suggestions() };
   }
@@ -180,11 +457,18 @@
     const crit = rs.filter((r) => r.status === "Critical");
     const warn = rs.filter((r) => r.status === "Degraded");
     const k = PG.panels.kpi;
-    let h = crit.length
-      ? `<b>${plural(crit.length, "region")} critical</b>: ${names(crit)}.`
-      : warn.length
-        ? `No critical regions, but <b>${plural(warn.length, "region")} degraded</b>: ${names(warn)}.`
-        : `All <b>${rs.length}</b> regions are healthy.`;
+    const lead = {
+      crit: "Not ideal. ",
+      warn: "Mostly fine, a bit grumpy. ",
+      calm: pick(["Smooth sailing. ", "All quiet. ", "Looking good. "]),
+    }[mood()];
+    let h =
+      lead +
+      (crit.length
+        ? `<b>${plural(crit.length, "region")} critical</b>: ${names(crit)}.`
+        : warn.length
+          ? `No critical regions, but <b>${plural(warn.length, "region")} degraded</b>: ${names(warn)}.`
+          : `All <b>${rs.length}</b> regions are healthy.`);
     h += `<br>Uptime ${k.get("uptime")}% · response ${Math.round(k.get("response"))}ms · ${plural(k.get("open"), "open ticket")}.`;
     return { h, c: suggestions("status") };
   }
@@ -196,7 +480,11 @@
       .sort((a, b) => b.load - a.load);
     if (!bad.length) {
       const top = regions().sort((a, b) => b.load - a.load)[0];
-      return { h: `Nothing needs attention. The busiest region is ${rowOf(top)}.`, c: suggestions("regions") };
+      if (!top) return { h: "No regions yet. Add one under Infrastructure and I'll start watching.", c: suggestions("regions") };
+      return {
+        h: `${pick(["Nothing needs attention. Enjoy it.", "All clear, nothing on fire.", "Nobody's misbehaving."])} The busiest region is ${rowOf(top)}.`,
+        c: suggestions("regions"),
+      };
     }
     return { h: lines(bad.map(rowOf)), c: ["Export CSV", ...suggestions("regions", 2)] };
   }
@@ -273,19 +561,24 @@
     if (top) h += `<br>You ask about <b>${esc(top[0])}</b> most, so I list it first in quick replies.`;
     h += `<br>My memory of you stays in this browser. Say "clear chat" to wipe the conversation.`;
     h += `<br>For open-ended questions, a summary of your dashboard data is processed by an AI service to help me answer.`;
+    if (SR) h += `<br>If you use the microphone, your browser's speech service may process the audio. It only listens while the mic button is on.`;
     return { h };
   }
 
-  const HELP = {
+  const HELP = () => ({
     h: `Ask me about regions, latency, uptime, incidents, tickets or the team. You can also ask me other questions about your dashboard and I'll do my best to help. I can also do things:<br>
       · "Show last 7 days" or "switch to staging"<br>
       · "Open reports"<br>
       · "Set critical to 90"<br>
       · "Pause the feed" · "Export CSV" · "Refresh"<br>
+      · "Tell me a joke" · "Who are you?"<br>
+      ${TTS ? `· "Unmute" · "Mute" · "Change voice"<br>` : ""}
+      ${SR ? `· Tap the mic and just talk to me<br>` : ""}
       · "Call me Sam"`,
-  };
+  });
 
   /* ---------- actions (may combine: "switch to staging and show 7 days") ---------- */
+  let justMuted = false; // so a spoken "mute" doesn't get a spoken reply
   function actions(text, t) {
     const notes = [];
     let m;
@@ -298,6 +591,33 @@
       notes.push(`Got it, I'll call you <b>${esc(who())}</b>.`);
       done = true;
     }
+
+    /* voice commands */
+    if (/\b(unmute|talk to me|turn on (the )?voice|voice on|read (your )?(answers|replies) (out|aloud)|speak to me)\b/.test(t)) {
+      if (!TTS) notes.push("This browser can't do speech, so I'll stay text only.");
+      else {
+        setVoice(true, false);
+        notes.push("Voice on. I'll read my replies aloud.");
+      }
+      done = true;
+    } else if (/\b(mute|be quiet|stop talking|turn off (the )?voice|voice off|silence)\b/.test(t)) {
+      justMuted = true;
+      setVoice(false);
+      notes.push("Voice off. I'll stay quiet.");
+      done = true;
+    } else if (/\b(change|switch|different|another|new)\b.*\bvoice\b/.test(t)) {
+      if (!TTS) notes.push("This browser can't do speech, so I'll stay text only.");
+      else {
+        const v = cycleVoice();
+        if (!v) notes.push("That's the only English voice this browser has, I'm afraid.");
+        else {
+          setVoice(true, false);
+          notes.push(`Voice changed to <b>${esc(v.name)}</b>. How do I sound?`);
+        }
+      }
+      done = true;
+    }
+
     if (/\b(show|switch|change|set|use|view|select|filter)\b/.test(t) && (m = t.match(/\b(7|30|90)\s*-?\s*d|\b(week|month|quarter)\b/))) {
       const days = m[1] ? +m[1] : { week: 7, month: 30, quarter: 90 }[m[2]];
       A.setRange(days);
@@ -345,12 +665,37 @@
   /* ---------- routing ---------- */
   function answer(t) {
     let r;
-    if (/\bhow are you\b/.test(t)) return { h: "Running smoothly. What do you want to check?", c: suggestions() };
+    if (/\bhow are you\b/.test(t))
+      return {
+        h: {
+          calm: pick(["Running smoothly. Heartbeat steady. What do you want to check?", "Doing great. Zero drama on my side."]),
+          warn: "A little busy keeping an eye on the amber stuff, but good.",
+          crit: "Busy. Ask me again once that red region is sorted.",
+        }[mood()],
+        c: suggestions(),
+      };
     if (/\b(who am i|about me|what do you (know|remember))\b/.test(t)) return aboutMe();
-    if (/\b(help|what can you|commands)\b/.test(t)) return { ...HELP, c: suggestions() };
-    if (/^(thanks|thank you|thx|cheers)\b/.test(t)) return { h: `Any time, ${esc(who())}.`, c: suggestions() };
-    if (/^(bye|goodbye|see you|cya)\b/.test(t)) return { h: `See you, ${esc(who())}. I'll flag anything critical while you're away.` };
+    if (/\b(help|what can you|commands)\b/.test(t)) return { ...HELP(), c: suggestions() };
+    if (/^(thanks|thank you|thx|cheers)\b/.test(t))
+      return {
+        h: pick([
+          `Any time, ${esc(who())}.`,
+          "Happy to help. That's what the heartbeat is for.",
+          "You got it.",
+          `Anytime. Go enjoy the green graphs, ${esc(who())}.`,
+        ]),
+        c: suggestions(),
+      };
+    if (/^(bye|goodbye|see you|cya)\b/.test(t))
+      return {
+        h: pick([
+          `See you, ${esc(who())}. I'll flag anything critical while you're away.`,
+          "Off you go. I'll keep watch.",
+          "Bye! I'll be here, staring at the graphs lovingly.",
+        ]),
+      };
     if (/^(hi|hello|hey|yo|good (morning|afternoon|evening))\b/.test(t) && t.length < 25) return greeting();
+    if ((r = chatter(t))) return r;
     if ((r = findRegion(t))) return regionDetail(r);
     if (/\b(status|health|how's|how is|summary|brief|catch me up|all good|everything ok|right now)\b/.test(t)) return status();
     if (/\b(critical|degraded|unhealthy|attention|worst|overload\w*|busiest|highest load|on fire)\b/.test(t)) return attention();
@@ -365,7 +710,11 @@
   }
 
   const NOT_UNDERSTOOD = () => ({
-    h: `I didn't catch that. Try one of these, or say "help" for everything I can do.`,
+    h: pick([
+      `Hm, that one went over my head. Try one of these, or say "help" for everything I can do.`,
+      `I didn't catch that. I'm great with regions, uptime and tickets, less so with riddles.`,
+      `Not sure what you mean. Here are some things I'm actually good at.`,
+    ]),
     c: suggestions(null, 4),
   });
 
@@ -373,10 +722,11 @@
   // so the caller can hand the question to Gemini.
   function respond(text) {
     const t = text.toLowerCase();
+    justMuted = false;
     if (/\b(clear|reset|wipe)\b.*\b(chat|conversation|history)\b/.test(t)) {
       log = [];
       write(CHAT_KEY, log);
-      return { h: "Conversation cleared.", c: suggestions(), cleared: true };
+      return { h: "Conversation cleared. Fresh start.", c: suggestions(), cleared: true };
     }
     const { notes, done } = actions(text, t);
     const ans = done ? null : answer(t);
@@ -386,12 +736,14 @@
   }
 
   /* ---------- UI ---------- */
-  function push(role, h, c) {
+  // forceSpeak: read this reply aloud even if voice is off (used after a spoken question)
+  function push(role, h, c, forceSpeak) {
     log.push({ r: role, h, c: c || null });
     log = log.slice(-40);
     write(CHAT_KEY, log);
     renderLog(true);
     if (role === "b" && el.panel.hidden) el.dot.hidden = false;
+    if (role === "b" && (mem.voice || forceSpeak)) speak(h);
   }
 
   // Keep the newest message in view. Glides when a message arrives, then re-pins
@@ -426,9 +778,10 @@
         : "";
   }
 
-  function send(text) {
+  function send(text, viaMic) {
     text = text.trim();
     if (!text || busy) return;
+    stopSpeaking(); // don't talk over a new question
     el.input.value = "";
     log.push({ r: "u", h: esc(text), c: null });
     busy++;
@@ -448,10 +801,10 @@
             }
           }
         } catch (_) {
-          r = { h: "Something went wrong while checking that. Try again." };
+          r = { h: pick(["Something went wrong while checking that. Try again?", "Well, that didn't work. Give it another go."]) };
         }
         busy--;
-        push("b", r.h, r.c);
+        push("b", r.h, r.c, !!viaMic && !justMuted);
       },
       PG.reduceMotion ? 0 : 350 + Math.random() * 350,
     );
@@ -467,6 +820,8 @@
       void el.panel.offsetWidth; // force a reflow so the animation restarts every time
       el.panel.classList.add("opening");
     } else if (!el.panel.hidden) {
+      stopSpeaking();
+      stopListening(true);
       // play the close animation, then hide
       el.panel.classList.remove("opening");
       el.panel.classList.add("closing");
@@ -505,13 +860,15 @@
       <section class="bot" id="botPanel" role="dialog" aria-label="Pulse assistant" hidden>
         <header class="bot-head">
           <div class="bot-id"><div class="bot-title">Pulse</div><div class="bot-sub" id="botSub"></div></div>
+          ${TTS ? '<button class="bot-x bot-voice" id="botVoice" type="button" aria-pressed="false"></button>' : ""}
           <button class="bot-x" id="botClear" type="button" title="Clear conversation" aria-label="Clear conversation">Clear</button>
           <button class="bot-x" id="botClose" type="button" title="Close" aria-label="Close assistant">✕</button>
         </header>
         <div class="bot-log" id="botLog" role="log" aria-live="polite"></div>
         <div class="bot-chips" id="botChips"></div>
         <div class="bot-form">
-          <input id="botInput" type="text" maxlength="200" autocomplete="off" placeholder="Ask about regions, uptime, tickets…" aria-label="Message Pulse" />
+          <input id="botInput" type="text" maxlength="200" autocomplete="off" placeholder="${PLACEHOLDER}" aria-label="Message Pulse" />
+          ${SR ? '<button class="bot-mic" id="botMic" type="button" aria-pressed="false"></button>' : ""}
           <button class="btn" id="botSend" type="button">Send</button>
         </div>
       </section>`;
@@ -519,13 +876,23 @@
     el = {
       fab: $("#botFab"), dot: $("#botDot"), panel: $("#botPanel"), sub: $("#botSub"),
       log: $("#botLog"), chips: $("#botChips"), input: $("#botInput"),
+      voice: $("#botVoice"), mic: $("#botMic"),
     };
     paintSub();
     PG.settings.onChange(paintSub);
+    paintVoice();
+    if (el.mic) {
+      el.mic.innerHTML = ICON.mic;
+      paintMic();
+      el.mic.addEventListener("click", startListening);
+    }
+    if (el.voice) el.voice.addEventListener("click", () => setVoice(!mem.voice, true));
+    addEventListener("pagehide", stopSpeaking);
 
     el.fab.addEventListener("click", () => setOpen(el.panel.hidden || el.panel.classList.contains("closing"), false));
     $("#botClose").addEventListener("click", () => setOpen(false, true));
     $("#botClear").addEventListener("click", () => {
+      stopSpeaking();
       log = [];
       const g = greeting();
       push("b", g.h, g.c);
@@ -547,6 +914,7 @@
   }
 
   // Called when a region goes critical or recovers, so Pulse can speak up unprompted.
+  // It only talks out loud if you have turned voice on.
   function alert(dot, label) {
     if (!el.panel) return;
     push("b", `<span class="bot-dot" style="background:${esc(dot)}"></span>${esc(label)}`, ["Which regions need attention?"]);

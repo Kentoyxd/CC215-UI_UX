@@ -60,7 +60,7 @@
   to { transform: scale(1); }
 }
 
-/* header: a live dot that speeds up and turns cyan while Pulse is thinking */
+/* header: a live dot that speeds up and turns cyan while Pulse is thinking or speaking */
 .bot-title { display: flex; align-items: center; gap: 8px; }
 .bot-title::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
@@ -68,7 +68,8 @@
   animation: pulse-dot 2s ease-in-out infinite;
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-.bot.is-busy .bot-title::before {
+.bot.is-busy .bot-title::before,
+.bot.is-speaking .bot-title::before {
   background: var(--cyan); box-shadow: 0 0 8px var(--cyan);
   animation-duration: 0.7s;
 }
@@ -94,4 +95,27 @@
 @keyframes bot-chip-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
+}
+
+/* ---------- voice: speaker toggle in the header, mic button next to the input ---------- */
+.bot-x svg { width: 15px; height: 15px; display: block; }
+.bot-voice { display: grid; place-items: center; padding: 6px 7px; }
+.bot-voice[aria-pressed="true"] { color: var(--cyan); }
+.bot-voice:focus-visible, .bot-mic:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.bot-mic {
+  flex-shrink: 0; width: 36px; display: grid; place-items: center;
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.bot-mic svg { width: 16px; height: 16px; display: block; }
+.bot-mic:hover { background: var(--panel-hi); color: var(--cyan); border-color: rgba(69, 216, 203, 0.4); }
+.bot-mic.listening {
+  color: var(--red); border-color: var(--red); background: rgba(242, 86, 95, 0.1);
+  animation: bot-listen 1.2s ease-in-out infinite;
+}
+@keyframes bot-listen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 86, 95, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(242, 86, 95, 0); }
 }
