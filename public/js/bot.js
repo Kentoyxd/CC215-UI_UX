@@ -1,7 +1,8 @@
-/* Pulsegrid — "Pulse", a personalised assistant. Runs entirely in the browser:
+/* Pulsegrid — "Pulse", a personalised assistant. Runs in the browser:
    it reads live dashboard data, can change filters/settings for you, and
    remembers your name, recent chat and the topics you ask about most.
-   To use a real LLM later, replace respond() with a call to your backend. */
+   Built-in rules answer common questions instantly; anything they don't
+   understand is passed to Gemini (Firebase AI Logic) with the dashboard data. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -77,6 +78,82 @@
       .filter((r) => stg === (r.env === "stg") || t.includes(r.name.toLowerCase()))
       .sort((a, b) => b.name.length - a.name.length)
       .find((r) => t.includes(r.name.toLowerCase()) || (city(r) && t.includes(city(r))));
+  }
+
+  /* ---------- Gemini (Firebase AI Logic) ----------
+     Loaded lazily with the modular SDK on its own app instance, because the
+     rest of the dashboard uses the compat SDK (which has no AI Logic).
+     Setup: Firebase console → AI Logic → Get started → Gemini Developer API,
+     then turn on App Check for this web app. */
+  const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.0.0/"; // use the latest 12.x
+  const GEMINI_MODEL = "gemini-2.5-flash"; // check the console for the current model name
+  const RECAPTCHA_SITE_KEY = "6LcGPx8uAAAAAA4lAtNX_xIyuzfMVtoa_CcxJJ-y"; // public; safe in front-end code
+  let modelPromise;
+
+  function getModel() {
+    if (!modelPromise) {
+      modelPromise = (async () => {
+        const { initializeApp } = await import(FIREBASE_SDK + "firebase-app.js");
+        const { getAI, getGenerativeModel, GoogleAIBackend } = await import(FIREBASE_SDK + "firebase-ai.js");
+        const app = initializeApp(window.FIREBASE_CONFIG, "gemini");
+        // App Check: proves requests come from this site. Must run before getAI().
+        const { initializeAppCheck, ReCaptchaEnterpriseProvider } = await import(FIREBASE_SDK + "firebase-app-check.js");
+        if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; // local testing only
+        initializeAppCheck(app, {
+          provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+          isTokenAutoRefreshEnabled: true,
+        });
+        const ai = getAI(app, { backend: new GoogleAIBackend() });
+        return getGenerativeModel(ai, {
+          model: GEMINI_MODEL,
+          systemInstruction:
+            "You are Pulse, an assistant inside an IT operations dashboard. " +
+            "Answer briefly (max 4 sentences) using ONLY the JSON data provided. " +
+            "If the data doesn't contain the answer, say so. Plain text, no markdown.",
+        });
+      })();
+      modelPromise.catch(() => (modelPromise = null)); // allow a retry after a failed load
+    }
+    return modelPromise;
+  }
+
+  // Summary of the dashboard sent to Gemini. Ticket titles and assignees are left out on purpose.
+  function dashboardContext() {
+    const D = PG.derive;
+    return JSON.stringify({
+      user: settings().name,
+      rangeDays: range(),
+      thresholds: { degradedAt: settings().warn, criticalAt: settings().critical },
+      regions: regions().map((r) => ({
+        name: r.name,
+        location: r.region,
+        env: r.env,
+        servers: r.servers,
+        load: r.load,
+        latency: r.latency,
+        status: r.status,
+      })),
+      openIncidents: PG.store.data.incidents
+        .filter((i) => i.status !== "resolved")
+        .map((i) => ({ title: i.title, severity: i.severity, status: i.status, region: i.region })),
+      incidentsBySeverity: D.severity(range()),
+      ticketsByCategory: D.tickets(range()),
+      openTickets: D.openTickets(),
+      team: (PG.views.team() || []).map((m) => ({
+        name: m.name,
+        role: m.role,
+        status: m.status,
+        oncall: m.oncall,
+        tickets: m.tickets,
+      })),
+    });
+  }
+
+  async function askGemini(text) {
+    const model = await getModel();
+    const res = await model.generateContent(`Dashboard data:\n${dashboardContext()}\n\nQuestion: ${text}`);
+    // Messages are rendered as HTML, so escape the model's output.
+    return esc(res.response.text().trim()).replace(/\n/g, "<br>");
   }
 
   /* ---------- answers (each returns { h, c? }) ---------- */
@@ -194,12 +271,13 @@
     let h = `You're <b>${esc(settings().name)}</b>.`;
     if (mine) h += ` Role: ${esc(mine.role)}${mine.oncall ? ", currently on call" : ""}, ${plural(mine.tickets, "open ticket")}.`;
     if (top) h += `<br>You ask about <b>${esc(top[0])}</b> most, so I list it first in quick replies.`;
-    h += `<br>Everything I remember stays in this browser. Say "clear chat" to wipe the conversation.`;
+    h += `<br>My memory of you stays in this browser. Say "clear chat" to wipe the conversation.`;
+    h += `<br>For open-ended questions, a summary of your dashboard data is processed by an AI service to help me answer.`;
     return { h };
   }
 
   const HELP = {
-    h: `Ask me about regions, latency, uptime, incidents, tickets or the team. I can also do things:<br>
+    h: `Ask me about regions, latency, uptime, incidents, tickets or the team. You can also ask me other questions about your dashboard and I'll do my best to help. I can also do things:<br>
       · "Show last 7 days" or "switch to staging"<br>
       · "Open reports"<br>
       · "Set critical to 90"<br>
@@ -281,11 +359,18 @@
     if (/\b(incident\w*|severity)\b/.test(t)) return incidents();
     if (/\b(ticket\w*|helpdesk|backlog)\b/.test(t)) return tickets();
     if (/\b(on[- ]?call|team|colleague\w*|who's|who is|online)\b/.test(t)) return team();
-    if (/bandwidth/.test(t)) return { h: "I don't track bandwidth. Try regions, latency, uptime, incidents or tickets.", c: suggestions() };
+    if (/bandwidth/.test(t)) return { h: "I don't track bandwidth. Try regions, latency, uptime, incidents or tickets.", c: suggestions() };
     if (/\b(activity|feed|recent|latest|happened)\b/.test(t)) return activity();
     return null;
   }
 
+  const NOT_UNDERSTOOD = () => ({
+    h: `I didn't catch that. Try one of these, or say "help" for everything I can do.`,
+    c: suggestions(null, 4),
+  });
+
+  // Synchronous part: rules and actions. Returns { ai: true } when nothing matched,
+  // so the caller can hand the question to Gemini.
   function respond(text) {
     const t = text.toLowerCase();
     if (/\b(clear|reset|wipe)\b.*\b(chat|conversation|history)\b/.test(t)) {
@@ -297,7 +382,7 @@
     const ans = done ? null : answer(t);
     if (notes.length) return { h: lines(notes) + (ans ? "<br><br>" + ans.h : ""), c: (ans && ans.c) || suggestions() };
     if (ans) return ans;
-    return { h: `I didn't catch that. Try one of these, or say "help" for everything I can do.`, c: suggestions(null, 4) };
+    return { ai: true, c: suggestions(null, 4) };
   }
 
   /* ---------- UI ---------- */
@@ -305,19 +390,24 @@
     log.push({ r: role, h, c: c || null });
     log = log.slice(-40);
     write(CHAT_KEY, log);
-    renderLog();
+    renderLog(true);
     if (role === "b" && el.panel.hidden) el.dot.hidden = false;
   }
 
-  function renderLog() {
+  // animateLast: play the entrance animation on the newest message (and the typing bubble)
+  function renderLog(animateLast) {
+    const lastIdx = log.length - 1;
     el.log.innerHTML =
-      log.map((m) => `<div class="bot-msg ${m.r === "u" ? "me" : "pulse"}">${m.h}</div>`).join("") +
-      (busy ? `<div class="bot-msg pulse typing" aria-label="Pulse is typing"><i></i><i></i><i></i></div>` : "");
-    el.log.scrollTop = el.log.scrollHeight;
+      log
+        .map((m, i) => `<div class="bot-msg ${m.r === "u" ? "me" : "pulse"}${animateLast && i === lastIdx ? " in" : ""}">${m.h}</div>`)
+        .join("") +
+      (busy ? `<div class="bot-msg pulse typing in" aria-label="Pulse is typing"><i></i><i></i><i></i></div>` : "");
+    el.log.scrollTo({ top: el.log.scrollHeight, behavior: PG.reduceMotion || !animateLast ? "auto" : "smooth" });
+    el.panel.classList.toggle("is-busy", busy > 0);
     const last = log[log.length - 1];
     el.chips.innerHTML =
       last && last.r === "b" && last.c && !busy
-        ? last.c.map((c) => `<button class="bot-chip" type="button">${esc(c)}</button>`).join("")
+        ? last.c.map((c, i) => `<button class="bot-chip" type="button" style="--i:${i}">${esc(c)}</button>`).join("")
         : "";
   }
 
@@ -327,14 +417,21 @@
     el.input.value = "";
     log.push({ r: "u", h: esc(text), c: null });
     busy++;
-    renderLog();
+    renderLog(true);
     mem.lastOpen = Date.now();
     write(MEM_KEY, mem);
     setTimeout(
-      () => {
+      async () => {
         let r;
         try {
           r = respond(text);
+          if (r.ai) {
+            try {
+              r = { h: await askGemini(text), c: suggestions() };
+            } catch (_) {
+              r = NOT_UNDERSTOOD(); // Gemini unavailable (offline, not enabled, quota…)
+            }
+          }
         } catch (_) {
           r = { h: "Something went wrong while checking that. Try again." };
         }
@@ -345,8 +442,22 @@
     );
   }
 
+  let closeTimer;
   function setOpen(open, returnFocus) {
-    el.panel.hidden = !open;
+    clearTimeout(closeTimer);
+    el.panel.classList.remove("closing");
+    if (open) el.panel.hidden = false;
+    else if (!el.panel.hidden) {
+      // play the close animation, then hide
+      el.panel.classList.add("closing");
+      closeTimer = setTimeout(
+        () => {
+          el.panel.hidden = true;
+          el.panel.classList.remove("closing");
+        },
+        PG.reduceMotion ? 0 : 160,
+      );
+    }
     el.fab.setAttribute("aria-expanded", String(open));
     el.fab.setAttribute("aria-label", open ? "Close Pulse assistant" : "Open Pulse assistant");
     if (open) {
@@ -392,7 +503,7 @@
     paintSub();
     PG.settings.onChange(paintSub);
 
-    el.fab.addEventListener("click", () => setOpen(el.panel.hidden, false));
+    el.fab.addEventListener("click", () => setOpen(el.panel.hidden || el.panel.classList.contains("closing"), false));
     $("#botClose").addEventListener("click", () => setOpen(false, true));
     $("#botClear").addEventListener("click", () => {
       log = [];
