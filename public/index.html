@@ -23,10 +23,10 @@
     <link rel="stylesheet" href="css/auth.css" />
     <link rel="stylesheet" href="css/admin.css" />
     <link rel="stylesheet" href="css/bot-animations.css" />
+    <link rel="stylesheet" href="css/mobile.css" />
   </head>
   <body class="locked">
     <div class="shell">
-      <!-- ============ SIDEBAR ============ -->
       <aside class="sidebar">
         <div class="brand">
           <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
@@ -208,9 +208,28 @@
         </div>
       </aside>
 
-      <!-- ============ MAIN ============ -->
       <main>
         <div class="topbar">
+          <button
+            class="menu-btn"
+            id="navToggle"
+            type="button"
+            aria-label="Open menu"
+            aria-expanded="false"
+            aria-controls="sidebar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
           <div class="search-wrap">
             <svg
               viewBox="0 0 24 24"
@@ -314,7 +333,6 @@
             </div>
           </div>
 
-          <!-- KPI GRID -->
           <div class="kpi-grid">
             <div class="kpi-card">
               <div class="kpi-top">
@@ -476,7 +494,6 @@
             </div>
           </div>
 
-          <!-- CHARTS ROW 1 -->
           <div class="grid-2">
             <div class="panel" id="panel-uptime">
               <div class="section-head">
@@ -514,7 +531,6 @@
             </div>
           </div>
 
-          <!-- CHARTS ROW 2 -->
           <div class="grid-2">
             <div class="panel" id="panel-tickets">
               <div class="section-head">
@@ -561,7 +577,6 @@
             </div>
           </div>
 
-          <!-- ACTIVITY FEED -->
           <div class="panel feed-panel" id="panel-feed">
             <div class="section-head">
               <h2>Live activity feed</h2>
@@ -592,5 +607,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/mobile.js"></script>
   </body>
 </html>
