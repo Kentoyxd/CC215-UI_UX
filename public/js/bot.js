@@ -668,18 +668,29 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Gemini (Firebase AI Logic)
+  //
+  // Google retires Gemini models regularly (gemini-2.5-flash was shut down
+  // in Oct 2026 and now returns NOT_FOUND). Instead of hard-coding a single
+  // model, we try this list in order and remember the first one that works.
+  // If a model is retired later, just add a newer name to the FRONT of the
+  // list. Check https://firebase.google.com/docs/ai-logic/models for names.
+  // ---------------------------------------------------------------------
   const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.0.0/";
-  const GEMINI_MODEL = "gemini-2.5-flash";
+  const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"];
   const RECAPTCHA_SITE_KEY = "6LcGPx8uAAAAAA4lAtNX_xIyuzfMVtoa_CcxJJ-y";
-  let modelPromise;
+  let goodModel = null;
+  let aiPromise;
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
   function systemNotes() {
     return KB.map((e) => toSpeech(kbText(e))).join(" ");
   }
-  function getModel() {
-    if (!modelPromise) {
-      modelPromise = (async () => {
+
+  function loadAI() {
+    if (!aiPromise) {
+      aiPromise = (async () => {
         const { initializeApp } = await import(FIREBASE_SDK + "firebase-app.js");
         const { getAI, getGenerativeModel, GoogleAIBackend } = await import(FIREBASE_SDK + "firebase-ai.js");
         const app = initializeApp(window.FIREBASE_CONFIG, "gemini");
@@ -687,20 +698,26 @@
         if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true });
         const ai = getAI(app, { backend: new GoogleAIBackend() });
-        return getGenerativeModel(ai, {
-          model: GEMINI_MODEL,
-          systemInstruction:
-            "You are Pulse, a calm, warm, dry-witted assistant inside an IT operations dashboard called Pulsegrid. " +
-            "You can answer any question about the system: its live data (the JSON provided), and how the app works (the notes below). " +
-            "Use ONLY the JSON data and the notes; if neither contains the answer, say so honestly and suggest where in the app to look. " +
-            "Answer in at most 5 short sentences. You may add one light, friendly quip, but never joke when a region is Critical or an incident is open. " +
-            "Your reply may be read aloud, so write plain sentences with no lists, symbols or odd abbreviations. Plain text, no markdown. " +
-            "How the app works: " + systemNotes(),
-        });
+        return { ai, getGenerativeModel };
       })();
-      modelPromise.catch(() => (modelPromise = null));
+      aiPromise.catch(() => (aiPromise = null));
     }
-    return modelPromise;
+    return aiPromise;
+  }
+
+  async function getModel(name) {
+    const { ai, getGenerativeModel } = await loadAI();
+    return getGenerativeModel(ai, {
+      model: name,
+      systemInstruction:
+        "You are Pulse, a calm, warm, dry-witted assistant inside an IT operations dashboard called Pulsegrid. " +
+        "You can answer any question about the system: its live data (the JSON provided), and how the app works (the notes below). " +
+        "For questions about the system, use ONLY the JSON data and the notes; if neither contains the answer, say so honestly and suggest where in the app to look, and never invent dashboard numbers. " +
+        "For general questions that are not about the dashboard (basic maths, simple facts, definitions, general IT and tech knowledge, casual chat), just answer them directly and briefly from your own knowledge. " +
+        "Answer in at most 5 short sentences. You may add one light, friendly quip, but never joke when a region is Critical or an incident is open. " +
+        "Your reply may be read aloud, so write plain sentences with no lists, symbols or odd abbreviations. Plain text, no markdown. " +
+        "How the app works: " + systemNotes(),
+    });
   }
 
   function dashboardContext() {
@@ -729,14 +746,26 @@
     });
   }
 
+  const modelGone = (e) => /not[ _-]?found|404|no longer available|not supported/i.test(String((e && (e.message || e.code)) || e));
+
   async function askGemini(text) {
     const hist = log.slice(-7, -1).map((m) => (m.r === "u" ? "User: " : "Pulse: ") + toSpeech(m.h)).join("\n");
-    const run = async () => {
-      const model = await getModel();
-      const res = await model.generateContent(`Dashboard data:\n${dashboardContext()}\n\nRecent chat:\n${hist || "(none)"}\n\nQuestion: ${text}`);
-      return esc(res.response.text().trim()).replace(/\n/g, "<br>");
-    };
-    return withTimeout(run(), 12000);
+    const prompt = `Dashboard data:\n${dashboardContext()}\n\nRecent chat:\n${hist || "(none)"}\n\nQuestion: ${text}`;
+    const order = goodModel ? [goodModel, ...GEMINI_MODELS.filter((m) => m !== goodModel)] : GEMINI_MODELS;
+    let lastErr;
+    for (const name of order) {
+      try {
+        const model = await getModel(name);
+        const res = await withTimeout(model.generateContent(prompt), 20000);
+        goodModel = name;
+        return esc(res.response.text().trim()).replace(/\n/g, "<br>");
+      } catch (e) {
+        lastErr = e;
+        console.warn("[Pulse] Gemini model failed:", name, e);
+        if (!modelGone(e)) break;
+      }
+    }
+    throw lastErr;
   }
 
   function greeting() {
@@ -901,13 +930,56 @@
     let h = oncall ? `<b>${esc(oncall.name)}</b> is on call${oncall.name.toLowerCase() === settings().name.trim().toLowerCase() ? " (that's you)" : ""}.` : "Nobody is on call. You can set one on the Team page.";
     h += `<br>${online.length} of ${t.length} online.`;
     if (busiest && busiest.tickets) h += ` ${esc(busiest.name)} has the most open tickets (${busiest.tickets}).`;
-    return { h, c: suggestions("team") };
+    return { h, c: ["List the whole team", ...suggestions("team", 2)] };
   }
 
   function memberDetail(m) {
     topic("team");
     return { h: `<b>${esc(m.name)}</b> · ${esc(m.role)} · ${esc(m.status)}${m.oncall ? " · on call" : ""}<br>${plural(m.tickets, "open ticket")} assigned.`, c: suggestions("team") };
   }
+
+  // Lists team members. Understands filters like "who's online", "away members",
+  // "list offline people" and role names ("show the SRE members", "helpdesk team").
+  function teamList(t) {
+    topic("team");
+    const all = PG.views.team() || [];
+    if (!all.length) return { h: "Nobody's on the team yet. Add people on the Team page.", c: suggestions("team") };
+    let list = all.slice();
+    const bits = [];
+    const st = t.match(/\b(online|away|offline)\b/);
+    if (st) {
+      list = list.filter((m) => m.status === st[1]);
+      bits.push(st[1]);
+    }
+    const roles = [...new Set(all.map((m) => m.role).filter(Boolean))];
+    const role = roles.find((r) => new RegExp("\\b" + escRe(r.toLowerCase().split(/\s+/)[0]) + "\\b").test(t));
+    if (role) {
+      list = list.filter((m) => m.role === role);
+      bits.push(role);
+    }
+    const tag = bits.length ? ` (${bits.join(", ")})` : "";
+    if (!list.length)
+      return { h: `Nobody on the team matches${tag}. There ${all.length === 1 ? "is" : "are"} ${plural(all.length, "member")} in total.`, c: ["List the whole team", ...suggestions("team", 2)] };
+    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const MAX = 25;
+    const rows = list
+      .slice(0, MAX)
+      .map((m) => `<b>${esc(m.name)}</b> · ${esc(m.role)} · ${esc(m.status)}${m.oncall ? " · on call" : ""} · ${plural(m.tickets, "open ticket")}`);
+    if (list.length > MAX) rows.push(`…and ${list.length - MAX} more. Open the Team page to see everyone.`);
+    const head = bits.length ? `${list.length} of ${plural(all.length, "member")}${tag}:` : `${plural(list.length, "team member")}:`;
+    return { h: `${head}<br>${lines(rows)}`, c: bits.length ? ["List the whole team", ...suggestions("team", 2)] : ["Who's online?", "Who's on call?", ...suggestions("team", 1)] };
+  }
+
+  const LIST_TEAM = new RegExp(
+    [
+      "\\b(list|show|display|give me|see|all|every(one|body)|whole|full|entire|roster|names?)\\b.*\\b(team|members?|roster|staff|people|engineers?|everyone|everybody)\\b",
+      "\\b(team|members?|roster)\\b.*\\b(list|names?)\\b",
+      "\\bwho (is |are |'s )?(on|in) the team\\b",
+      "\\bwho works here\\b",
+      "\\bwho('s| is| are) (online|away|offline)\\b",
+      "\\b(online|away|offline) (team ?)?(members?|people|staff)\\b",
+    ].join("|"),
+  );
 
   function fleet(t) {
     topic("regions");
@@ -956,7 +1028,9 @@
       · "Open reports" · "Set critical to 90"<br>
       · "Any insights?" · "Which regions have load above 70?" · "What about staging?"<br>
       · "Create ticket VPN drops hourly" · "Log incident API errors, high severity" · "Resolve incident API errors" · "Assign VPN drops to Sam" (I always ask before changing anything)<br>
+      · "List the team" · "Who's online?" · "Show the SRE members"<br>
       · "Pause the feed" · "Export CSV" · "Refresh"<br>
+      · "What's 12 x 7?" · "20% of 150" · "Square root of 144"<br>
       · "Tell me a joke" · "Rate my dashboard"<br>
       ${TTS ? `· "Unmute" · "Mute" · "Change voice"<br>` : ""}
       ${SR ? `· Tap the mic and just talk to me<br>` : IS_BRAVE ? `· (Mic input isn't available in Brave, but typing works great)<br>` : ""}
@@ -1042,6 +1116,86 @@
     return { notes, done };
   }
 
+  // Safe calculator (no eval). Handles "what's 1 + 1", "12 x 7", "20% of 150",
+  // "square root of 144", "2 ^ 10", "(3 + 4) * 5", "10 divided by 4", etc.
+  const fmtNum = (v) => Number(v.toPrecision(12)).toLocaleString("en-US", { maximumFractionDigits: 10 });
+  function calc(t) {
+    let s = t.replace(/[?!=]+\s*$/, "").trim();
+    let m;
+    if ((m = s.match(/(\d+(?:\.\d+)?)\s*(?:%|percent)\s*of\s*(\d+(?:\.\d+)?)/))) {
+      const v = (+m[1] / 100) * +m[2];
+      return { h: `<b>${m[1]}%</b> of <b>${m[2]}</b> is <b>${fmtNum(v)}</b>.`, c: suggestions() };
+    }
+    s = s
+      .replace(/^(?:what(?:'s| is)?|whats|calculate|calc|compute|solve|work out|how much is|tell me)\s+/, "")
+      .replace(/\b(?:the\s+)?(?:square root of|sqrt of)\s*/g, "sqrt ")
+      .replace(/\bto the power of\b|\braised to\b/g, "^")
+      .replace(/\bmultiplied by\b|\btimes\b/g, "*")
+      .replace(/(\d)\s*[x×]\s*(?=[\d(])/g, "$1*")
+      .replace(/÷/g, "/")
+      .replace(/\bdivided by\b|\bover\b/g, "/")
+      .replace(/\bplus\b/g, "+")
+      .replace(/\bminus\b/g, "-")
+      .replace(/(\d),(?=\d{3}\b)/g, "$1");
+    const toks = s.match(/\d+(?:\.\d+)?|sqrt|[-+*/^()]/g);
+    if (!toks || s.replace(/\s+/g, "") !== toks.join("")) return null;
+    if (!toks.some((x) => /^\d/.test(x)) || (toks.length < 3 && toks[0] !== "sqrt")) return null;
+    if (!toks.some((x) => /^(?:[-+*/^]|sqrt)$/.test(x))) return null;
+
+    let i = 0;
+    const peek = () => toks[i];
+    const expr = () => {
+      let v = term();
+      while (peek() === "+" || peek() === "-") v = toks[i++] === "+" ? v + term() : v - term();
+      return v;
+    };
+    const term = () => {
+      let v = power();
+      while (peek() === "*" || peek() === "/") v = toks[i++] === "*" ? v * power() : v / power();
+      return v;
+    };
+    const power = () => {
+      const b = unary();
+      if (peek() === "^") {
+        i++;
+        return Math.pow(b, power());
+      }
+      return b;
+    };
+    const unary = () => {
+      if (peek() === "-") {
+        i++;
+        return -unary();
+      }
+      if (peek() === "+") {
+        i++;
+        return unary();
+      }
+      return atom();
+    };
+    const atom = () => {
+      const x = toks[i++];
+      if (x === "(") {
+        const v = expr();
+        if (toks[i++] !== ")") throw new Error("paren");
+        return v;
+      }
+      if (x === "sqrt") return Math.sqrt(unary());
+      if (x && /^\d/.test(x)) return +x;
+      throw new Error("syntax");
+    };
+    let v;
+    try {
+      v = expr();
+      if (i !== toks.length) return null;
+    } catch (_) {
+      return null;
+    }
+    const shown = esc(toks.join(" ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/sqrt \(/g, "sqrt("));
+    if (!Number.isFinite(v)) return { h: `<b>${shown}</b> doesn't give a real number. Dividing by zero is a classic, even for me.`, c: suggestions() };
+    return { h: `<b>${shown}</b> = <b>${fmtNum(v)}</b>${spice(["Easy one.", "Maths is the one thing I never lag on."])}`, c: suggestions() };
+  }
+
   const kbAnswer = (e) => ({ h: kbText(e), c: suggestions("howto") });
 
   function answer(t) {
@@ -1065,6 +1219,7 @@
     if (/^(bye|goodbye|see you|cya|good night|gn)\b/.test(t))
       return { h: pick([`See you, ${esc(who())}. I'll flag anything critical while you're away.`, "Off you go. I'll keep watch.", "Bye! I'll be here, staring at the graphs lovingly.", "Sleep well. I'll guard the uptime."], "bye") };
     if (/^(hi|hello|hey|yo|howdy|good (morning|afternoon|evening))\b/.test(t) && t.length < 25) return greeting();
+    if ((r = calc(t))) return r;
     if ((r = chatter(t))) return r;
 
     if (/\b(insights?|analy[sz]e|anything (unusual|wrong|odd|weird)|what should i (do|look at|fix)|recommend\w*|priorit\w*|health ?check|checkup)\b/.test(t) && !HOWTO.test(t)) return insights();
@@ -1087,6 +1242,7 @@
     if (/\b(open|active|current|ongoing|unresolved)\b.*\bincident|\bincident\w*\b.*\b(open|active|right now|ongoing)\b|\bwhat('s| is) (broken|down|on fire)\b/.test(t)) return openIncidents();
     if (/\b(downtime|outage minutes)\b/.test(t)) return downtime();
     if (/\bticket/.test(t) && /\b(unassigned|oldest|newest|latest|stale|last)\b/.test(t)) return ticketSpecial(t);
+    if (LIST_TEAM.test(t) && !/\b(tickets?|incidents?|regions?|servers?)\b/.test(t)) return teamList(t);
     if ((mbr = findMember(t)) && !/\b(tickets? by|breakdown)\b/.test(t)) return memberDetail(mbr);
     if (/\b(status|health|how's|how is|summary|brief|catch me up|all good|everything ok|right now|sitrep)\b/.test(t) && !/\b(status page|status chip|status badge)\b/.test(t)) return status();
     if (/\b(critical|degraded|unhealthy|attention|worst|overload\w*|highest load|on fire|misbehav\w*)\b/.test(t) && !HOWTO.test(t)) return attention();
