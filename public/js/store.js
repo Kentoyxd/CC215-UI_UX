@@ -2,9 +2,9 @@
   "use strict";
   const PG = window.Pulsegrid;
   const db = firebase.firestore();
-  const COLS = ["regions", "incidents", "tickets"];
+  const COLS = ["regions", "incidents", "tickets", "team"];
   const DAY = 864e5;
-  const data = { regions: [], incidents: [], tickets: [] };
+  const data = { regions: [], incidents: [], tickets: [], team: [] };
   const loaded = {};
   const prev = {};
   const subs = [];
@@ -62,7 +62,6 @@
     resolved: (days) => data.tickets.filter((t) => t.status === "resolved" && (t.resolvedAt || t.openedAt) >= since(days)).length,
     openTickets: () => data.tickets.filter((t) => t.status !== "resolved").length,
     openIncidents: () => data.incidents.filter((i) => i.status !== "resolved").length,
-
     uptimeSeries: (days) => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
@@ -82,6 +81,7 @@
     ready: () => COLS.every((c) => loaded[c]),
     on: (fn) => subs.push(fn),
     add: (col, o) => db.collection(col).add(toDb(o)),
+    set: (col, id, o) => db.collection(col).doc(id).set(toDb(o), { merge: true }),
     update: (col, id, o) => db.collection(col).doc(id).set(toDb(o), { merge: true }),
     remove: (col, id) => db.collection(col).doc(id).delete(),
   };

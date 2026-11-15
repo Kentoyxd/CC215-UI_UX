@@ -122,7 +122,6 @@
     let mode = "signin";
     const o = card(`
       <h1 id="auTitle">Sign in</h1>
-      <p class="auth-sub">Anyone can create an account. Only administrators get the dashboard. Everyone else can use the public status page.</p>
       <form id="auForm" novalidate>
         <label class="field">EMAIL<input id="auEmail" type="email" autocomplete="email" required /></label>
         <label class="field">PASSWORD<input id="auPass" type="password" autocomplete="current-password" minlength="6" required /></label>

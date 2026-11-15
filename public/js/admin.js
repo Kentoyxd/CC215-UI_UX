@@ -29,7 +29,6 @@
   const SPECS = [
     {
       view: "infra", col: "regions", noun: "region", title: "Infrastructure",
-      blurb: "The regions you monitor. They appear on the dashboard and on the public status page.",
       empty: "No regions yet. Add your first one above.",
       fields: [
         { k: "name", label: "REGION ID", type: "text", req: true, max: 40, ph: "us-east-1" },
@@ -60,7 +59,6 @@
     },
     {
       view: "incidents", col: "incidents", noun: "incident", title: "Incidents",
-      blurb: "Anything affecting service. Open incidents and their update text are shown on the public status page.",
       empty: "No incidents logged. That's a good sign.",
       datalist: true,
       fields: [
@@ -85,7 +83,6 @@
     },
     {
       view: "tickets", col: "tickets", noun: "ticket", title: "Tickets",
-      blurb: "Support requests handled by your team. Assignees are chosen from the Team page. Tickets are private to admins.",
       empty: "No tickets yet. Add your first one above.",
       fields: [
         { k: "title", label: "TITLE", type: "text", req: true, max: 120, ph: "VPN drops every hour" },
@@ -127,7 +124,7 @@
     };
 
     v.innerHTML = `
-      <div class="view-head"><h1>${spec.title}</h1><p>${spec.blurb}</p></div>
+      <div class="view-head"><h1>${spec.title}</h1></div>
       <div class="panel crud-panel">
         <div class="section-head"><h2 class="crud-title">Add ${spec.noun}</h2></div>
         <div class="crud-form">${spec.fields.map(field).join("")}</div>
@@ -311,7 +308,7 @@
     PG.ui.activate(link, () => PG.ui.navTo("Admins"));
 
     v.innerHTML = `
-      <div class="view-head"><h1>Admins</h1><p>People who can sign in and manage this dashboard. Create an admin account directly, or invite someone by email.</p></div>
+      <div class="view-head"><h1>Admins</h1></div>
       <div class="panel crud-panel">
         <div class="section-head"><h2>Create an admin account</h2></div>
         <div class="crud-form">
@@ -419,7 +416,6 @@
         app2 = firebase.initializeApp(window.FIREBASE_CONFIG, "create-admin-" + Date.now());
         const cred = await app2.auth().createUserWithEmailAndPassword(email, pw);
         try {
-
           await fs.collection("admins").doc(cred.user.uid).set({ email, via: "admin", createdAt: stamp() });
         } catch (err) {
           sayCa("Account created, but granting access failed. " + denied(err), true);
