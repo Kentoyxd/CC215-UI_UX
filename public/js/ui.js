@@ -1,10 +1,8 @@
-/* Pulsegrid — reusable UI behaviours: toast, dropdown menus, nav, search. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
   const $ = (s) => document.querySelector(s);
 
-  /* ---------- toast ---------- */
   let toastTimer;
   function toast(msg) {
     let el = $("#toast");
@@ -21,7 +19,6 @@
     toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
   }
 
-  /* ---------- dropdown menus (keyboard accessible) ---------- */
   let open = null;
   function closeMenu() {
     if (!open) return;
@@ -33,7 +30,6 @@
     if (open && !open.anchor.contains(e.target)) closeMenu();
   });
 
-  // getItems() -> [{ id, label, meta?, dot?, selected? }], evaluated each time the menu opens
   function attachMenu(anchor, getItems, onPick) {
     function show() {
       closeMenu();
@@ -93,7 +89,6 @@
     });
   }
 
-  /* ---------- sidebar navigation + pages ---------- */
   const NAV = {
     Overview: ["overview"],
     Infrastructure: ["infra"],
@@ -106,7 +101,7 @@
   };
   function navTo(label, scroll = true) {
     const [view, anchor] = NAV[label];
-    // Read the nav items each time, so items added later (like Admins) highlight correctly.
+
     document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.textContent.trim() === label));
     document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== "view-" + view));
     try {
@@ -125,7 +120,6 @@
     if (label) navTo(label, false);
   }
 
-  /* ---------- search + keyboard shortcuts (Ctrl/⌘ K or /) ---------- */
   function initSearch(onInput) {
     const input = $("#searchInput");
     if (!/Mac|iPhone|iPad/.test(navigator.platform)) $("#kbdHint").textContent = "Ctrl K";
@@ -148,7 +142,6 @@
     });
   }
 
-  // click + Enter/Space activation for role="button" elements
   function activate(el, fn) {
     el.setAttribute("role", "button");
     el.tabIndex = 0;

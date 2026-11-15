@@ -1,7 +1,3 @@
-/* Pulsegrid — sign-in and cloud sync (Firebase Auth + Firestore).
-   Flow: sign in → check admin access (or claim an admin invite) → load this user's data
-   into localStorage → start the app.
-   Afterwards every "pulsegrid:*" localStorage write is also saved to Firestore (users/{uid}). */
 (function () {
   "use strict";
   const PG = (window.Pulsegrid = window.Pulsegrid || {});
@@ -31,7 +27,6 @@
   };
   const friendly = (e) => ERR[e && e.code] || `Something went wrong (${(e && (e.code || e.message)) || "unknown"}).`;
 
-  /* ---------- localStorage <-> Firestore ---------- */
   const clearLocal = () =>
     Object.keys(localStorage).filter((k) => k.startsWith(PREFIX)).forEach((k) => rawRemove.call(localStorage, k));
 
@@ -46,7 +41,7 @@
     return ref
       .set({ data, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
       .catch(() => {
-        keys.forEach((k) => k in pending || (pending[k] = batch[k])); // keep unsaved changes, retry later
+        keys.forEach((k) => k in pending || (pending[k] = batch[k]));
         timer = setTimeout(flush, 5000);
         PG.ui && PG.ui.toast("Couldn't save changes. Retrying…");
       });
@@ -73,7 +68,6 @@
   }
 
   PG.db = {
-    // Settings → "Clear all saved data": wipe this user's cloud data too.
     async clearAll() {
       pending = {};
       clearTimeout(timer);
@@ -85,23 +79,18 @@
   async function hydrate(user) {
     ref = db.collection("users").doc(user.uid);
     const snap = await ref.get();
-    clearLocal(); // never mix data from a previous account on this browser
+    clearLocal();
     const data = snap.exists ? snap.data().data || {} : {};
     Object.entries(data).forEach(([k, v]) => rawSet.call(localStorage, PREFIX + k, v));
     if (!snap.exists) {
       await ref.set({ email: user.email || "", createdAt: firebase.firestore.FieldValue.serverTimestamp(), data: {} });
     }
-    // No saved name yet (new account, or an older one): start with the account's own name.
     if (!data.settings) {
       const name = (user.displayName || (user.email || "").split("@")[0] || "").slice(0, 40);
-      if (name) localStorage.setItem(PREFIX + "settings", JSON.stringify({ name })); // patched → saved to cloud
+      if (name) localStorage.setItem(PREFIX + "settings", JSON.stringify({ name }));
     }
   }
 
-  /* ---------- admin invites ---------- */
-  // An existing admin can invite an email address from the Admins page. The first time that
-  // person signs in with a verified email, they create their own admin document here.
-  // The Firestore rules only allow it if the invite exists and the email is verified.
   async function claimInvite(user) {
     if (!user.email || !user.emailVerified) return false;
     const email = user.email.toLowerCase();
@@ -111,14 +100,13 @@
         via: "invite",
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
-      db.collection("adminInvites").doc(email).delete().catch(() => {}); // tidy up; not critical
+      db.collection("adminInvites").doc(email).delete().catch(() => {});
       return true;
     } catch (_) {
-      return false; // no invite for this email (or not allowed)
+      return false;
     }
   }
 
-  /* ---------- UI ---------- */
   function card(html) {
     if (!overlay) {
       overlay = document.createElement("div");
@@ -134,7 +122,7 @@
     let mode = "signin";
     const o = card(`
       <h1 id="auTitle">Sign in</h1>
-      <p class="auth-sub">Your settings, team and reports are saved to your account.</p>
+      <p class="auth-sub">Anyone can create an account. Only administrators get the dashboard. Everyone else can use the public status page.</p>
       <form id="auForm" novalidate>
         <label class="field">EMAIL<input id="auEmail" type="email" autocomplete="email" required /></label>
         <label class="field">PASSWORD<input id="auPass" type="password" autocomplete="current-password" minlength="6" required /></label>
@@ -142,6 +130,7 @@
         <button class="btn auth-main" id="auGo" type="submit">Sign in</button>
       </form>
       <button class="btn ghost auth-main" id="auGoogle" type="button">Continue with Google</button>
+      <a class="btn ghost auth-main" id="auPublic" href="status">View public status page</a>
       <div class="auth-links">
         <button type="button" id="auSwitch">Create an account</button>
         <button type="button" id="auReset">Forgot password?</button>
@@ -197,13 +186,12 @@
   }
 
   function showNoAccess(user) {
-    // Email/password accounts must verify their email before an invite can be claimed.
     const needVerify = !!user.email && !user.emailVerified;
-    const o = card(`<h1>No admin access</h1>
-      <p class="auth-sub">This dashboard is for administrators. If you just want to check service status, use the public status page.</p>
-      <a class="btn auth-main" href="status">Open status page</a>
-      <p class="auth-sub">Signed in as <b>${esc(user.email || user.uid)}</b>. If an admin has invited this email, you can claim access${needVerify ? " after verifying it" : ""}.</p>
-      ${needVerify ? '<button class="btn auth-main" id="auVerify" type="button">Send verification email</button>' : ""}
+    const o = card(`<h1>You're signed in</h1>
+      <p class="auth-sub">Signed in as <b>${esc(user.email || user.uid)}</b>. This account isn't an administrator, so it can't open the dashboard. You can still view the public status page.</p>
+      <a class="btn auth-main" href="status">Go to public status page</a>
+      <p class="auth-sub">If an admin has invited this email, you can claim access${needVerify ? " after verifying it" : ""}.</p>
+      ${needVerify ? '<button class="btn ghost auth-main" id="auVerify" type="button">Send verification email</button>' : ""}
       <button class="btn ghost auth-main" id="auCheck" type="button">I've been invited. Check again</button>
       <div class="auth-err" id="auMsg" role="status"></div>
       <p class="auth-sub">Are you the owner and the very first admin? Add a document to the <b>admins</b> collection in Firestore with this ID:</p>
@@ -226,7 +214,7 @@
       say("Checking…");
       try {
         await user.reload();
-        await user.getIdToken(true); // pick up the new email_verified status
+        await user.getIdToken(true);
         started = false;
         await start(auth.currentUser || user);
       } catch (e) {
@@ -250,12 +238,9 @@
     if (started) return;
     card(`<p class="auth-sub">Loading your workspace…</p>`);
     try {
-      // The dashboard is for admins only (a document in the "admins" collection with their user ID).
       let adminDoc = await db.collection("admins").doc(user.uid).get();
-      // Not an admin yet? If an admin invited this email, claim it now.
       if (!adminDoc.exists && (await claimInvite(user))) adminDoc = await db.collection("admins").doc(user.uid).get();
       if (!adminDoc.exists) return showNoAccess(user);
-      // Older admin documents have no email; add it so they show up properly on the Admins page.
       if (!(adminDoc.data() || {}).email && user.email) {
         db.collection("admins").doc(user.uid).set({ email: user.email.toLowerCase() }, { merge: true }).catch(() => {});
       }
@@ -303,9 +288,6 @@
     firebase.initializeApp(cfg);
     auth = firebase.auth();
     db = firebase.firestore();
-    // Brave Shields (and some ad blockers) block Firestore's streaming connection.
-    // Long-polling works everywhere; force it in Brave, auto-detect elsewhere.
-    // Must run before the first Firestore call.
     db.settings({
       experimentalForceLongPolling: !!navigator.brave,
       experimentalAutoDetectLongPolling: !navigator.brave,

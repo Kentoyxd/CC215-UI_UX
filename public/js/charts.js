@@ -1,10 +1,8 @@
-/* Pulsegrid — SVG/DOM charts (no dependencies). */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
   const $ = (s) => document.querySelector(s);
 
-  /* ---------- uptime line chart with hover tooltip ---------- */
   function line(days, animate = true) {
     const svg = $("#lineChart");
     const tip = $("#lineTip");
@@ -47,7 +45,7 @@
       const len = path.getTotalLength();
       path.style.strokeDasharray = len;
       path.style.strokeDashoffset = len;
-      path.getBoundingClientRect(); // force layout so the transition runs
+      path.getBoundingClientRect();
       path.style.transition = "stroke-dashoffset 1.2s cubic-bezier(.16,.84,.44,1)";
       area.style.transition = "opacity .8s ease .4s";
       requestAnimationFrame(() => {
@@ -79,10 +77,9 @@
       tip.hidden = true;
     };
 
-    return pts.reduce((a, b) => a + b, 0) / pts.length; // average uptime
+    return pts.reduce((a, b) => a + b, 0) / pts.length;
   }
 
-  /* ---------- incidents donut ---------- */
   function donut(days) {
     const data = PG.derive.severity(days);
     const sum = data.reduce((a, b) => a + b.value, 0);
@@ -135,7 +132,6 @@
       .join("");
   }
 
-  /* ---------- tickets bar chart ---------- */
   function bars(days, delay = 60) {
     const data = PG.derive.tickets(days);
     const max = Math.max(1, ...data.map((d) => d.value));
@@ -153,7 +149,7 @@
     setTimeout(() => {
       el.querySelectorAll(".bar-fill").forEach((b) => (b.style.width = b.dataset.w + "%"));
     }, delay);
-    return data.reduce((a, b) => a + b.value, 0); // total tickets
+    return data.reduce((a, b) => a + b.value, 0);
   }
 
   PG.charts = { line, donut, bars };

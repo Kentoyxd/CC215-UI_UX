@@ -1,11 +1,9 @@
-/* Pulsegrid — KPI cards, region list, hero status, activity feed (all driven by Firestore data). */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
   const { pad, plural, esc } = PG.util;
   const $ = (s) => document.querySelector(s);
 
-  /* ---------- KPIs ---------- */
   function animateTo(el, to, duration) {
     const decimals = +el.dataset.decimals || 0;
     const suffix = el.dataset.suffix || "";
@@ -58,7 +56,6 @@
     if (label) label.textContent = `Tickets resolved (${days}d)`;
   }
 
-  /* ---------- regions ---------- */
   const STATUS = {
     ok: { color: "#3ed486", label: "Healthy" },
     warn: { color: "#eeab3f", label: "Degraded" },
@@ -138,7 +135,6 @@
     else list.forEach(paintRow);
   }
 
-  /* ---------- hero status (production regions, or all if there are none) ---------- */
   function updateHero() {
     const rs = regions();
     const prod = rs.filter((r) => r.env === "prod");
@@ -162,7 +158,6 @@
     document.title = `${rs.length ? (crit ? "🔴" : warn ? "🟠" : "🟢") : "⚪"} ${title} · Pulsegrid`;
   }
 
-  /* ---------- sortable columns ---------- */
   function paintSortHeads() {
     document.querySelectorAll(".server-row.head > div").forEach((h) => {
       const on = h.dataset.key === sort.key;
@@ -185,7 +180,6 @@
     });
   }
 
-  /* ---------- CSV export of the regions currently shown ---------- */
   function exportCsv() {
     const list = visible();
     const rows = [
@@ -204,7 +198,6 @@
     return list.length;
   }
 
-  /* ---------- activity feed: built from incidents + tickets (plus local alerts) ---------- */
   const feedState = { paused: false, query: "", max: 6, local: [] };
   const plain = (html) => html.replace(/<[^>]+>/g, "");
   const sevColor = (k) => (PG.severityMeta.find((m) => m.key === k) || {}).color || "#5b8fef";

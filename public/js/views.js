@@ -1,4 +1,3 @@
-/* Pulsegrid — "Analyze" pages: Reports, Team, Settings. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -39,7 +38,6 @@
   const stamp = () => new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   let query = "";
 
-  /* =============================== REPORTS =============================== */
   const REPORTS = {
     uptime: {
       label: "Uptime summary",
@@ -185,12 +183,11 @@
     });
   }
 
-  /* ================================ TEAM ================================= */
   const ROLES = ["SRE", "Network Engineer", "Security Analyst", "Sysadmin", "DevOps", "Helpdesk"];
   const CHIP = { online: ["ok", "Online"], away: ["warn", "Away"], offline: ["off", "Offline"] };
   const NEXT = { online: "away", away: "offline", offline: "online" };
   let team = store.get("pulsegrid:team", []);
-  // Open tickets are counted from tickets assigned to the member by name (Tickets page).
+
   const openFor = (m) =>
     PG.store.data.tickets.filter((t) => t.status !== "resolved" && (t.assignee || "").trim().toLowerCase() === m.name.trim().toLowerCase()).length;
 
@@ -271,7 +268,6 @@
     renderTeam();
   }
 
-  /* ============================== SETTINGS =============================== */
   function initSettings() {
     const S = PG.settings;
     const sw = (id, label) => `<label class="switch"><input type="checkbox" id="${id}" aria-label="${label}"><span></span></label>`;

@@ -1,4 +1,3 @@
-
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -23,7 +22,7 @@
   const INCIDENT_STATUS = [["investigating", "Investigating"], ["identified", "Identified"], ["monitoring", "Monitoring"], ["resolved", "Resolved"]];
   const TICKET_STATUS = [["open", "Open"], ["resolved", "Resolved"]];
   const CATS = PG.categories.map((c) => [c, c]);
-  
+
   const TEAM_OPTS = () => [["", "Unassigned"], ...(PG.views && PG.views.team ? PG.views.team() : []).map((m) => [m.name, m.name])];
   const withResolved = (v, ex) => ({ ...v, resolvedAt: v.status === "resolved" ? (ex && ex.resolvedAt) || Date.now() : null });
 
@@ -157,7 +156,6 @@
       msg.className = "crud-msg" + (bad ? " bad" : "");
     };
 
-   
     function fillDynamic(f, cur) {
       const el = dom(f.k);
       const opts = optsOf(f).slice();
@@ -289,7 +287,6 @@
     paint();
   }
 
-
   function buildAdmins() {
     const fs = firebase.firestore();
     const stamp = firebase.firestore.FieldValue.serverTimestamp;
@@ -405,7 +402,6 @@
         .finally(() => (btn.disabled = false));
     }
 
-   
     async function createAccount() {
       sayCa("");
       const email = v.querySelector("#caEmail").value.trim().toLowerCase();
@@ -417,19 +413,19 @@
       const btn = v.querySelector("#caCreate");
       btn.disabled = true;
       sayCa("Creating…");
-      
+
       let app2;
       try {
         app2 = firebase.initializeApp(window.FIREBASE_CONFIG, "create-admin-" + Date.now());
         const cred = await app2.auth().createUserWithEmailAndPassword(email, pw);
         try {
-         
+
           await fs.collection("admins").doc(cred.user.uid).set({ email, via: "admin", createdAt: stamp() });
         } catch (err) {
           sayCa("Account created, but granting access failed. " + denied(err), true);
           return;
         }
-        fs.collection("adminInvites").doc(email).delete().catch(() => {}); // clear any old invite
+        fs.collection("adminInvites").doc(email).delete().catch(() => {});
         v.querySelector("#caEmail").value = "";
         v.querySelector("#caPass").value = "";
         sayCa("");

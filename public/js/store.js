@@ -1,5 +1,3 @@
-/* Pulsegrid — live data from Firestore (regions, incidents, tickets) + numbers derived from it.
-   Admins write these collections; the public status page reads regions and incidents. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -8,7 +6,7 @@
   const DAY = 864e5;
   const data = { regions: [], incidents: [], tickets: [] };
   const loaded = {};
-  const prev = {}; // col -> { id: status } so we can report status changes
+  const prev = {};
   const subs = [];
   const ms = (v) => (v && v.toMillis ? v.toMillis() : typeof v === "number" ? v : 0);
 
@@ -49,7 +47,6 @@
     return out;
   };
 
-  /* ---------- numbers derived from the data ---------- */
   const since = (days) => Date.now() - days * DAY;
   const derive = {
     incidents: (days) => data.incidents.filter((i) => i.startedAt >= since(days)),
@@ -65,7 +62,7 @@
     resolved: (days) => data.tickets.filter((t) => t.status === "resolved" && (t.resolvedAt || t.openedAt) >= since(days)).length,
     openTickets: () => data.tickets.filter((t) => t.status !== "resolved").length,
     openIncidents: () => data.incidents.filter((i) => i.status !== "resolved").length,
-    // Daily uptime %: each incident's downtime minutes count against the day it started.
+
     uptimeSeries: (days) => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);

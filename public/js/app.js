@@ -1,4 +1,3 @@
-/* Pulsegrid — app entry point: state + wiring. */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -7,7 +6,6 @@
   const ui = PG.ui;
   const $ = (s) => document.querySelector(s);
 
-  /* ---------- state (range + environment persist between visits) ---------- */
   const PREFS_KEY = "pulsegrid:prefs";
   const state = { range: 30, env: "all", query: "" };
   try {
@@ -21,7 +19,6 @@
     } catch (_) {}
   };
 
-  /* ---------- render ---------- */
   function applyRange(first, quiet) {
     const { label } = PG.ranges[state.range];
     $("#rangeLabel").textContent = label;
@@ -50,18 +47,17 @@
     savePrefs();
     applyEnv(false);
   }
-  // Redraw everything from the latest Firestore data (used on every live update).
+
   function renderData() {
     applyRange(false, true);
     PG.panels.renderRegions(state.env, state.query, false);
     PG.panels.updateHero();
     feed.refresh();
   }
-  // Used by the Pulse assistant (js/bot.js)
+
   PG.getState = () => ({ range: state.range, env: state.env });
   PG.actions = { setRange, setEnv, refresh: renderData };
 
-  /* ---------- menus ---------- */
   ui.attachMenu(
     $("#rangeChip"),
     () =>
@@ -108,7 +104,6 @@
     },
   );
 
-  /* ---------- alerts: region status changes and new/resolved incidents ---------- */
   function notify(dot, label, feedText) {
     notes.unshift({ dot, label: esc(label), meta: "just now" });
     notes.length = Math.min(notes.length, 8);
@@ -144,7 +139,6 @@
     renderData();
   });
 
-  /* ---------- search filters the region list and activity feed ---------- */
   ui.initSearch((q) => {
     state.query = q;
     feed.setQuery(q);
@@ -153,18 +147,15 @@
   });
   ui.initNav();
 
-  /* ---------- clock + connection status ---------- */
   function paintClock() {
     const d = new Date();
     $("#clock").textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     $("#lastSync").textContent = PG.store.ready() ? "Live" : "Connecting…";
   }
 
-  /* ---------- export ---------- */
   $("#exportBtn").addEventListener("click", () => ui.toast(`Exported ${PG.panels.exportCsv()} regions to CSV`));
   PG.panels.initSort();
 
-  /* ---------- boot ---------- */
   applyRange(true);
   applyEnv(true);
   paintBadge();

@@ -1,16 +1,15 @@
-/* Pulsegrid — user settings, saved in this browser (localStorage). */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
   const KEY = "pulsegrid:settings";
   const defaults = {
     name: "Admin",
-    warn: 80, // region load % that counts as "Degraded"
-    critical: 92, // region load % that counts as "Critical"
-    live: true, // simulated live updates on/off
-    interval: 6, // seconds between live updates
-    toasts: true, // pop-up alerts
-    feedAlerts: true, // write alerts into the activity feed
+    warn: 80,
+    critical: 92,
+    live: true,
+    interval: 6,
+    toasts: true,
+    feedAlerts: true,
   };
   const subs = [];
 

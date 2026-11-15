@@ -1,14 +1,3 @@
-/* Pulsegrid — "Pulse", a personalised assistant. Runs in the browser.
-   - Reads live dashboard data and can change filters/settings for you.
-   - Built-in brain: data answers + a knowledge base covering every part of the system.
-   - Anything else goes to Gemini (Firebase AI Logic) with the dashboard data AND the same
-     knowledge base. If Gemini is unreachable (offline, blocked by Brave Shields, quota), Pulse
-     falls back to the closest knowledge-base answer.
-   - Understands small typos, follow-ups ("why?", "tell me more", "what about staging?"), numeric filters,
-     and can create/resolve/assign tickets and incidents after asking for confirmation.
-   - Personality: calm, warm, dry-witted. Reads the room (relaxed when green, serious when red).
-     Replies are varied: no pool repeats the same line twice in a row.
-   - Voice: browser text-to-speech (off by default) and speech recognition (not available in Brave). */
 (function () {
   "use strict";
   const PG = window.Pulsegrid;
@@ -18,7 +7,7 @@
     String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  const IS_BRAVE = !!navigator.brave; // Brave ships without Google's speech service
+  const IS_BRAVE = !!navigator.brave;
   const CHAT_KEY = "pulsegrid:chat";
   const MEM_KEY = "pulsegrid:bot";
   const read = (k, d) => {
@@ -41,7 +30,6 @@
   let el = {};
   const PLACEHOLDER = "Ask me anything about the system…";
 
-  /* ---------- who the user is ---------- */
   const settings = () => PG.settings.get();
   const who = () => {
     const name = settings().name.trim();
@@ -50,9 +38,8 @@
   };
   const me = () => (PG.views.team() || []).find((m) => m.name.toLowerCase() === settings().name.trim().toLowerCase());
 
-  /* ---------- variety helpers ---------- */
   const lastPick = {};
-  // Picks a random item but never the same one twice in a row for the same pool.
+
   const pick = (a, key) => {
     if (!Array.isArray(a)) return a;
     const k = key || a[0];
@@ -63,7 +50,6 @@
   };
   const chance = (p) => Math.random() < p;
 
-  /* ---------- memory: topics asked about most come first in the quick replies ---------- */
   const PROMPTS = {
     status: "How are things right now?",
     regions: "Which regions need attention?",
@@ -74,7 +60,7 @@
     team: "Who's on call?",
     howto: "How do I add a region?",
   };
-  const ctx = { kind: null, region: null }; // what we were just talking about, for follow-ups
+  const ctx = { kind: null, region: null };
   function topic(k) {
     ctx.kind = k;
     mem.topics[k] = (mem.topics[k] || 0) + 1;
@@ -88,7 +74,6 @@
       .map((k) => PROMPTS[k]);
   }
 
-  /* ---------- live data helpers ---------- */
   const regions = () => PG.panels.snapshot();
   const range = () => PG.getState().range;
   const sum = (a) => a.reduce((x, y) => x + y, 0);
@@ -112,16 +97,13 @@
     if (rs.some((r) => r.status === "Degraded") || openInc().length) return "warn";
     return "calm";
   };
-  // A small dry aside, only when things are calm or mildly amber, never when something is critical.
+
   const spice = (calm, warn) => {
     const m = mood();
     if (m === "crit" || !chance(0.35)) return "";
     return " " + pick(m === "calm" ? calm : warn || calm);
   };
 
-  /* ---------- knowledge base: how the whole system works ----------
-     k = keywords (a phrase counts double). h = HTML answer or a function returning it.
-     This same text is also given to Gemini so its answers match the real app. */
   const KB = [
     { id: "app", k: ["what is pulsegrid", "pulsegrid", "this dashboard", "this app", "what is this", "what does this do", "purpose"],
       h: "Pulsegrid is an IT operations command center. Admins record regions, incidents and tickets, the dashboard turns them into live KPIs and charts, and a public status page shows customers the regions and incidents you choose to publish." },
@@ -199,7 +181,6 @@
   }
   const HOWTO = /\b(how (do|can|should|to|does|did|would)|how .{0,30}(calculated|computed|worked out|determined)|where (do|can|is|are|does)|what (does|do) .{0,30}(mean|do|show)|what (is|are) (a|an|the)\b|what's (a|an|the)\b|explain|why (does|do)|can i|could i|is it possible|what happens|difference between|meaning of|tell me about (the )?(settings|reports|team|admins|status page|notifications|feed))/;
 
-  /* ---------- typo tolerance ---------- */
   const VOCAB = new Set("uptime latency incident incidents ticket tickets infrastructure degraded critical region regions severity staging production threshold settings reports status servers bandwidth assign resolve unassigned downtime availability overview notification notifications schedule insights summary slowest busiest environment healthy helpdesk category export refresh invite dashboard".split(" "));
   KB.forEach((e) => e.k.forEach((k) => k.split(" ").forEach((w) => w.length > 4 && VOCAB.add(w))));
   const lev = (a, b) => {
@@ -211,7 +192,7 @@
         d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
     return d[a.length][b.length];
   };
-  // Fixes small typos ("incidnets" -> "incidents") so the rules still match. Region and member names are left alone.
+
   function fix(t) {
     const own = new Set([...regions().flatMap((r) => words(r.name + " " + (r.region || ""))), ...(PG.views.team() || []).flatMap((m) => words(m.name))]);
     return t.replace(/[a-z]{5,}/g, (w) => {
@@ -230,12 +211,10 @@
     });
   }
 
-  /* ---------- follow-ups, specific facts, numeric filters, insights ---------- */
   const envName = (e) => (e === "prod" ? "production" : "staging");
   const openTickets = () => DATA().tickets.filter((x) => x.status !== "resolved");
   const pronounRegion = (t) => (ctx.region && /\b(it|its|it's|that region|this region|there|that one)\b/.test(t) ? regions().find((r) => r.name === ctx.region) : null);
 
-  // Short, direct answers: "what's the load on us-east-1?"
   function regionFact(t, r) {
     const bits = [];
     if (/\bload\b/.test(t)) bits.push(`load is <b>${r.load}%</b>`);
@@ -294,7 +273,7 @@
   }
 
   const OPS = "above|over|more than|greater than|higher than|at least|below|under|less than|lower than|at most";
-  // "regions with load above 70", "latency under 50ms"
+
   function numeric(t) {
     let f, op, n, m;
     if ((m = t.match(new RegExp("\\b(load|latency|servers)\\b\\D{0,20}?(" + OPS + ")\\s*(\\d+)")))) {
@@ -320,7 +299,6 @@
     return { h: list.length ? `${plural(list.length, "region")} ${word} ${n}${unit}:<br>${lines(list.map(rowOf))}` : `No regions ${word} ${n}${unit}.`, c: suggestions("regions") };
   }
 
-  // A prioritised "what should I look at?" list built from everything Pulse can see.
   function insights() {
     topic("status");
     const s = settings();
@@ -352,7 +330,6 @@
     return { h: `${pick(["Here's what I'd look at, in order:", "My priority list:", "Things worth your attention:"], "insb")}<br>${lines(out.slice(0, 5).map((x, i) => `${i + 1}. ${x}`))}`, c: suggestions("status") };
   }
 
-  /* ---------- actions that change data (always ask first) ---------- */
   let pending = null;
   const CAT_HINTS = [
     ["Network", /vpn|wifi|wi-fi|network|internet|dns|router|switch|\blan\b/],
@@ -448,7 +425,6 @@
     return null;
   }
 
-  /* ---------- small talk and easter eggs ---------- */
   const JOKES = [
     "Why did the server go to therapy? Too many unresolved dependencies.",
     "It's not DNS. There's no way it's DNS. It was DNS.",
@@ -531,7 +507,6 @@
     });
   }
 
-  /* ---------- voice: speaking (text-to-speech) ---------- */
   const TTS = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   let voices = [];
   let speakId = 0;
@@ -585,7 +560,7 @@
     const text = toSpeech(html);
     if (!text) return;
     const parts = (text.match(/[^.!?]+[.!?]*/g) || [text]).map((p) => p.trim()).filter(Boolean);
-    const voice = chooseVoice(); // may be null in Brave with fingerprint protection; the default voice is used then
+    const voice = chooseVoice();
     const id = speakId;
     const rate = mood() === "crit" ? 1.1 : 1;
     parts.forEach((p, i) => {
@@ -623,8 +598,6 @@
     else if (announce) speak("Voice on. I'll read my replies aloud.");
   }
 
-  /* ---------- voice: listening (speech recognition) ----------
-     Disabled in Brave: it exposes the API but ships without Google's speech service, so it always fails. */
   const SR = IS_BRAVE ? null : window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null;
   let listening = false;
@@ -695,9 +668,6 @@
     }
   }
 
-  /* ---------- Gemini (Firebase AI Logic) ----------
-     Loaded lazily. Wrapped in a timeout so a blocked request (Brave Shields, ad blockers,
-     offline) fails fast and Pulse falls back to its built-in knowledge. */
   const FIREBASE_SDK = "https://www.gstatic.com/firebasejs/12.0.0/";
   const GEMINI_MODEL = "gemini-2.5-flash";
   const RECAPTCHA_SITE_KEY = "6LcGPx8uAAAAAA4lAtNX_xIyuzfMVtoa_CcxJJ-y";
@@ -733,7 +703,6 @@
     return modelPromise;
   }
 
-  // Summary of the dashboard sent to Gemini. Ticket titles and assignees are left out on purpose.
   function dashboardContext() {
     const D = PG.derive;
     const d = DATA();
@@ -770,7 +739,6 @@
     return withTimeout(run(), 12000);
   }
 
-  /* ---------- answers (each returns { h, c? }) ---------- */
   function greeting() {
     const hr = new Date().getHours();
     const part = hr < 5 ? "Working late" : hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
@@ -995,7 +963,6 @@
       · "Call me Sam"`,
   });
 
-  /* ---------- actions (may combine: "switch to staging and show 7 days") ---------- */
   let justMuted = false;
   function actions(text, t) {
     const notes = [];
@@ -1075,7 +1042,6 @@
     return { notes, done };
   }
 
-  /* ---------- routing ---------- */
   const kbAnswer = (e) => ({ h: kbText(e), c: suggestions("howto") });
 
   function answer(t) {
@@ -1108,7 +1074,6 @@
     const named = regionNamed(t);
     if (HOWTO.test(t) && kb.s >= 2 && !named) return kbAnswer(kb.e);
 
-    // data questions
     if ((r = numeric(t))) return r;
     let mbr;
     let inc;
@@ -1145,7 +1110,6 @@
     c: suggestions(null, 4),
   });
 
-  // Last resort when Gemini can't be reached: the closest knowledge-base entry, or a friendly shrug.
   function offlineFallback(text) {
     const kb = kbBest(fix(text.toLowerCase()));
     if (kb.e && kb.s >= 1)
@@ -1176,7 +1140,6 @@
     return { ai: true, c: suggestions(null, 4) };
   }
 
-  /* ---------- UI ---------- */
   function push(role, h, c, forceSpeak) {
     log.push({ r: role, h, c: c || null });
     log = log.slice(-40);
@@ -1358,7 +1321,6 @@
     });
   }
 
-  // Called when a region goes critical or recovers, so Pulse can speak up unprompted.
   function alert(dot, label) {
     if (!el.panel) return;
     push("b", `<span class="bot-dot" style="background:${esc(dot)}"></span>${esc(label)}`, ["Which regions need attention?"]);

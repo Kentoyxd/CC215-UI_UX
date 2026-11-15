@@ -1,4 +1,3 @@
-/* Pulsegrid — mobile slide-out navigation. */
 (function () {
   "use strict";
   const sidebar = document.querySelector(".sidebar");
@@ -21,7 +20,7 @@
 
   btn.addEventListener("click", () => setOpen(!isOpen()));
   backdrop.addEventListener("click", () => setOpen(false));
-  // Event delegation, so the Admins link (added later by admin.js) closes the menu too.
+
   sidebar.addEventListener("click", (e) => e.target.closest(".nav-item, a") && setOpen(false));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isOpen()) {

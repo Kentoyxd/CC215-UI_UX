@@ -1,5 +1,3 @@
-/* Pulsegrid — shared constants and helpers.
-   Live data (regions, incidents, tickets) comes from Firestore: see store.js. */
 (function () {
   "use strict";
   const PG = (window.Pulsegrid = window.Pulsegrid || {});
