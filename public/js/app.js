@@ -35,6 +35,7 @@
     $("#envLabel").textContent = PG.environments[state.env];
     PG.panels.renderRegions(state.env, state.query, true);
     if (!first) PG.panels.updateHero();
+    PG.map.render();
   }
 
   function setRange(n) {
@@ -53,6 +54,7 @@
     PG.panels.renderRegions(state.env, state.query, false);
     PG.panels.updateHero();
     feed.refresh();
+    PG.map.render();
   }
 
   PG.getState = () => ({ range: state.range, env: state.env });
@@ -104,7 +106,7 @@
     },
   );
 
-  function notify(dot, label, feedText) {
+  function notify(dot, label, feedText, opts) {
     notes.unshift({ dot, label: esc(label), meta: "just now" });
     notes.length = Math.min(notes.length, 8);
     unread++;
@@ -112,7 +114,7 @@
     const s = PG.settings.get();
     if (s.feedAlerts && feedText) feed.log(dot, feedText);
     if (s.toasts) ui.toast(label);
-    PG.bot.alert(dot, label);
+    PG.bot.alert(dot, label, opts);
   }
   const sevColor = (k) => (PG.severityMeta.find((m) => m.key === k) || {}).color || "#5b8fef";
 
@@ -135,6 +137,16 @@
           else if (c.type === "modified" && c.from && c.from !== "resolved" && c.doc.status === "resolved")
             notify("#3ed486", `Resolved: ${c.doc.title}`);
         });
+      if (col === "tickets") {
+        // Ticket titles stay private: the feed already lists tickets, and Pulse keeps these
+        // callouts out of what it sends to the AI (opts.private).
+        const t = { chip: "Ticket breakdown", private: true };
+        info.changes.forEach((c) => {
+          if (c.type === "added" && c.doc.status !== "resolved") notify("#5b8fef", `New ticket: ${c.doc.title}`, null, t);
+          else if (c.type === "modified" && c.from && c.from !== "resolved" && c.doc.status === "resolved")
+            notify("#3ed486", `Ticket resolved: ${c.doc.title}`, null, t);
+        });
+      }
     }
     renderData();
   });

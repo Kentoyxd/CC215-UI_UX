@@ -5,7 +5,7 @@
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const PREFIX = "pulsegrid:";
-  const SCRIPTS = ["data", "store", "settings", "charts", "panels", "ui", "views", "admin", "bot", "app"].map((n) => `js/${n}.js`);
+  const SCRIPTS = ["data", "store", "settings", "charts", "panels", "ui", "views", "admin", "bot", "map", "app"].map((n) => `js/${n}.js`);
   const rawSet = Storage.prototype.setItem;
   const rawRemove = Storage.prototype.removeItem;
   const cfg = window.FIREBASE_CONFIG || {};
