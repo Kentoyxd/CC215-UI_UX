@@ -316,13 +316,11 @@
           <label class="field">TEMPORARY PASSWORD<input id="caPass" type="text" minlength="6" maxlength="60" placeholder="at least 6 characters" autocomplete="off" /></label>
         </div>
         <div class="crud-bar"><button class="btn" id="caCreate" type="button">Create admin</button><span class="crud-msg" id="caMsg" role="status"></span></div>
-        <p class="note">Creates the account and gives it admin access immediately. Share the email and temporary password with them privately. They can use "Forgot password?" on the sign-in screen to choose their own.</p>
       </div>
       <div class="panel crud-panel">
         <div class="section-head"><h2>Invite an admin</h2></div>
         <div class="crud-form"><label class="field wide">EMAIL<input id="adEmail" type="email" maxlength="120" placeholder="name@company.com" autocomplete="off" /></label></div>
         <div class="crud-bar"><button class="btn" id="adInvite" type="button">Invite admin</button><span class="crud-msg" id="adMsg" role="status"></span></div>
-        <p class="note">No email is sent, so tell them to open the dashboard and sign in with this address. They can use Google sign-in, or an email and password they have verified. Use this for people who already have an account.</p>
       </div>
       <div class="panel crud-panel">
         <div class="section-head"><h2>Admins</h2><span class="hint" id="adCount"></span></div>

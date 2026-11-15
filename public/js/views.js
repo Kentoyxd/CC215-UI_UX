@@ -142,7 +142,6 @@
           <div class="panel no-print" style="margin-bottom:14px">
             <div class="section-head"><h2>Scheduled reports</h2></div>
             ${SCHEDULES.map(([k, l, w]) => `<div class="row-between"><div>${l}<small>${w}</small></div><label class="switch"><input type="checkbox" data-k="${k}" aria-label="${l}"${sched[k] ? " checked" : ""}><span></span></label></div>`).join("")}
-            <p class="note">Schedules are saved in this browser. Emailing them needs a backend (for example a Cloud Function).</p>
           </div>
           <div class="panel no-print">
             <div class="section-head"><h2>Recent reports</h2></div>

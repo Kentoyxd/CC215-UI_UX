@@ -138,8 +138,6 @@
             notify("#3ed486", `Resolved: ${c.doc.title}`);
         });
       if (col === "tickets") {
-        // Ticket titles stay private: the feed already lists tickets, and Pulse keeps these
-        // callouts out of what it sends to the AI (opts.private).
         const t = { chip: "Ticket breakdown", private: true };
         info.changes.forEach((c) => {
           if (c.type === "added" && c.doc.status !== "resolved") notify("#5b8fef", `New ticket: ${c.doc.title}`, null, t);
